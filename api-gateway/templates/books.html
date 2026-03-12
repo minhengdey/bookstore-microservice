@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">📖 Sách</h1>
+
+{% if can_manage_books %}
+<div class="card">
+    <h2 class="card-header-icon">➕ Thêm sách mới</h2>
+    <p class="card-note">Dành cho nhân viên / quản lý.</p>
+    {% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
+    <form method="POST">
+        {% csrf_token %}
+        <div class="form-grid">
+            <div style="grid-column: 1 / -1;">
+                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">Tên sách</label>
+                <input type="text" name="title" placeholder="Tên sách" required style="width:100%;">
+            </div>
+            <div>
+                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">ISBN</label>
+                <input type="text" name="isbn" placeholder="ISBN">
+            </div>
+            <div>
+                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">Giá gốc</label>
+                <input type="number" name="list_price" placeholder="0" step="0.01" min="0" required>
+            </div>
+            <div>
+                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">Giá bán</label>
+                <input type="number" name="sale_price" placeholder="0" step="0.01" min="0" required>
+            </div>
+            <div>
+                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px;color:var(--text-secondary);">Tồn kho</label>
+                <input type="number" name="stock" placeholder="0" min="0" value="0" required>
+            </div>
+            <div style="align-self:end;">
+                <button type="submit" class="btn btn-primary">Thêm sách</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% else %}
+<div class="card" style="background:#f8fafc;">
+    <p style="color:var(--text-secondary);font-size:0.9rem;margin:0;">Bạn đang xem danh sách sách. Chỉ nhân viên / quản lý mới có quyền thêm hoặc xóa sách.</p>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>Danh sách sách</h2>
+    {% if books %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tên sách</th>
+                    <th>ISBN</th>
+                    <th>Giá gốc</th>
+                    <th>Giá bán</th>
+                    <th>Tồn kho</th>
+                    <th>Trạng thái</th>
+                    {% if can_manage_books %}<th>Thao tác</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for book in books %}
+            <tr>
+                <td><span class="badge">{{ book.id }}</span></td>
+                <td><strong>{{ book.title }}</strong></td>
+                <td>{{ book.isbn|default:"—" }}</td>
+                <td>{{ book.list_price }}</td>
+                <td>{{ book.sale_price }}</td>
+                <td>{{ book.stock }}</td>
+                <td><span class="badge {% if book.status == 'active' %}badge-success{% else %}badge-warning{% endif %}">{{ book.status }}</span></td>
+                {% if can_manage_books %}
+                <td>
+                    <form method="POST" action="/books/{{ book.id }}/delete/" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Xóa sách này?')">Xóa</button>
+                    </form>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">Chưa có sách.</p>
+    {% endif %}
+</div>
+{% endblock %}

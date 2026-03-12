@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Đăng nhập – BookStore</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --card: #fff;
+            --border: #e2e8f0;
+            --primary: #0d9488;
+            --primary-hover: #0f766e;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --error-bg: #fef2f2;
+            --error-text: #b91c1c;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+            padding: 40px 40px 32px;
+            width: 100%;
+            max-width: 420px;
+            border: 1px solid var(--border);
+        }
+        .logo { text-align: center; font-size: 2.5rem; margin-bottom: 8px; }
+        h2 {
+            text-align: center;
+            color: var(--text);
+            margin-bottom: 28px;
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+        input, select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            margin-bottom: 18px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input:focus, select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+        }
+        .tabs {
+            display: flex;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            background: #f8fafc;
+            color: var(--text-muted);
+            border: none;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .tab.active { background: var(--primary); color: #fff; }
+        button[type="submit"] {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background 0.2s;
+        }
+        button[type="submit"]:hover { background: var(--primary-hover); }
+        .alert {
+            background: var(--error-bg);
+            color: var(--error-text);
+            border: 1px solid #fecaca;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            font-size: 0.9rem;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 22px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+        .footer a { color: var(--primary); text-decoration: none; font-weight: 600; }
+        .footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo">📚</div>
+        <h2>Đăng nhập BookStore</h2>
+
+        {% if error %}
+        <div class="alert">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" id="loginForm">
+            {% csrf_token %}
+            <div class="tabs">
+                <button type="button" class="tab active" onclick="setType('customer',this)">Khách hàng</button>
+                <button type="button" class="tab" onclick="setType('staff',this)">Nhân viên / Quản lý</button>
+            </div>
+            <input type="hidden" name="login_type" id="login_type" value="customer">
+
+            <label>Tên đăng nhập hoặc Email</label>
+            <input type="text" name="username" placeholder="Nhập tên đăng nhập hoặc email" required autofocus>
+
+            <label>Mật khẩu</label>
+            <input type="password" name="password" placeholder="Nhập mật khẩu" required>
+
+            <button type="submit">Đăng nhập</button>
+        </form>
+
+        <div class="footer">
+            Chưa có tài khoản? <a href="/register/">Đăng ký khách hàng</a>
+        </div>
+    </div>
+    <script>
+    function setType(type, btn) {
+        document.getElementById('login_type').value = type;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    </script>
+</body>
+</html>

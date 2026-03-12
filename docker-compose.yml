@@ -1,0 +1,214 @@
+services:
+
+  # NOTE: Không dùng PostgreSQL container — kết nối tới PostgreSQL cài trên máy host.
+  # Chạy scripts/init_databases.sql trong DBeaver/psql trước khi docker compose up.
+
+  # ── Identity / User services ──────────────────────────────────────────────
+  customer-service:
+    build: ./customer-service
+    ports:
+      - "${PORT_CUSTOMER:-8001}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_CUSTOMER:-customer-service-dev-key}
+      - DB_NAME=${DB_NAME_CUSTOMER:-customer_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  staff-service:
+    build: ./staff-service
+    ports:
+      - "${PORT_STAFF:-8004}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_STAFF:-staff-service-dev-key}
+      - DB_NAME=${DB_NAME_STAFF:-staff_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Catalog / Book services ───────────────────────────────────────────────
+  catalog-service:
+    build: ./catalog-service
+    ports:
+      - "${PORT_CATALOG:-8006}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_CATALOG:-catalog-service-dev-key}
+      - DB_NAME=${DB_NAME_CATALOG:-catalog_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  book-service:
+    build: ./book-service
+    ports:
+      - "${PORT_BOOK:-8002}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_BOOK:-book-service-dev-key}
+      - DB_NAME=${DB_NAME_BOOK:-book_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Shopping services ─────────────────────────────────────────────────────
+  cart-service:
+    build: ./cart-service
+    ports:
+      - "${PORT_CART:-8003}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_CART:-cart-service-dev-key}
+      - DB_NAME=${DB_NAME_CART:-cart_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  order-service:
+    build: ./order-service
+    ports:
+      - "${PORT_ORDER:-8007}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_ORDER:-order-service-dev-key}
+      - DB_NAME=${DB_NAME_ORDER:-order_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Payment / Shipping services ───────────────────────────────────────────
+  pay-service:
+    build: ./pay-service
+    ports:
+      - "${PORT_PAY:-8008}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_PAY:-pay-service-dev-key}
+      - DB_NAME=${DB_NAME_PAY:-pay_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  ship-service:
+    build: ./ship-service
+    ports:
+      - "${PORT_SHIP:-8009}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_SHIP:-ship-service-dev-key}
+      - DB_NAME=${DB_NAME_SHIP:-ship_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Inventory management ──────────────────────────────────────────────────
+  manager-service:
+    build: ./manager-service
+    ports:
+      - "${PORT_MANAGER:-8005}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_MANAGER:-manager-service-dev-key}
+      - DB_NAME=${DB_NAME_MANAGER:-manager_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Review / Recommendation ───────────────────────────────────────────────
+  comment-rate-service:
+    build: ./comment-rate-service
+    ports:
+      - "${PORT_COMMENT:-8010}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_COMMENT:-comment-rate-dev-key}
+      - DB_NAME=${DB_NAME_COMMENT:-comment_rate_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  recommender-ai-service:
+    build: ./recommender-ai-service
+    ports:
+      - "${PORT_RECOMMENDER:-8011}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_RECOMMENDER:-recommender-dev-key}
+      - DB_NAME=${DB_NAME_RECOMMENDER:-recommender_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+    networks:
+      - bookstore-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── API Gateway ───────────────────────────────────────────────────────────
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "${PORT_GATEWAY:-8000}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_GATEWAY:-api-gateway-dev-key}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
+      - CUSTOMER_SERVICE_URL=${CUSTOMER_SERVICE_URL:-http://customer-service:8000}
+      - BOOK_SERVICE_URL=${BOOK_SERVICE_URL:-http://book-service:8000}
+      - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://catalog-service:8000}
+      - CART_SERVICE_URL=${CART_SERVICE_URL:-http://cart-service:8000}
+      - ORDER_SERVICE_URL=${ORDER_SERVICE_URL:-http://order-service:8000}
+      - PAY_SERVICE_URL=${PAY_SERVICE_URL:-http://pay-service:8000}
+      - SHIP_SERVICE_URL=${SHIP_SERVICE_URL:-http://ship-service:8000}
+      - COMMENT_RATE_URL=${COMMENT_RATE_URL:-http://comment-rate-service:8000}
+      - RECOMMENDER_URL=${RECOMMENDER_URL:-http://recommender-ai-service:8000}
+      - STAFF_SERVICE_URL=${STAFF_SERVICE_URL:-http://staff-service:8000}
+      - MANAGER_SERVICE_URL=${MANAGER_SERVICE_URL:-http://manager-service:8000}
+    networks:
+      - bookstore-net
+
+networks:
+  bookstore-net:
+    driver: bridge

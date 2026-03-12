@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">📂 Danh mục</h1>
+<p style="color:var(--text-secondary);margin-bottom:24px;font-size:0.95rem;">Tác giả, thể loại, genre và nhà xuất bản.</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px;">
+    <div class="card" style="margin-bottom:0;">
+        <h2 style="display:flex;align-items:center;gap:8px;">✒️ Tác giả <span class="badge" style="margin-left:auto;">{{ authors|length }}</span></h2>
+        {% if authors %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>ID</th><th>Tên</th><th>Năm sinh</th></tr></thead>
+                <tbody>
+                {% for a in authors %}
+                <tr><td><span class="badge">{{ a.id }}</span></td><td>{{ a.author_name }}</td><td>{{ a.birth_year|default:"—" }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="empty">Chưa có tác giả.</p>{% endif %}
+    </div>
+    <div class="card" style="margin-bottom:0;">
+        <h2 style="display:flex;align-items:center;gap:8px;">📑 Thể loại <span class="badge" style="margin-left:auto;">{{ categories|length }}</span></h2>
+        {% if categories %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>ID</th><th>Tên</th></tr></thead>
+                <tbody>
+                {% for c in categories %}
+                <tr><td><span class="badge">{{ c.id }}</span></td><td>{{ c.category_name }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="empty">Chưa có thể loại.</p>{% endif %}
+    </div>
+    <div class="card" style="margin-bottom:0;">
+        <h2 style="display:flex;align-items:center;gap:8px;">🏷️ Genre <span class="badge" style="margin-left:auto;">{{ genres|length }}</span></h2>
+        {% if genres %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>ID</th><th>Tên</th></tr></thead>
+                <tbody>
+                {% for g in genres %}
+                <tr><td><span class="badge">{{ g.id }}</span></td><td>{{ g.genre_name }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="empty">Chưa có genre.</p>{% endif %}
+    </div>
+    <div class="card" style="margin-bottom:0;">
+        <h2 style="display:flex;align-items:center;gap:8px;">🏢 Nhà xuất bản <span class="badge" style="margin-left:auto;">{{ publishers|length }}</span></h2>
+        {% if publishers %}
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>ID</th><th>Tên</th><th>Điện thoại</th></tr></thead>
+                <tbody>
+                {% for p in publishers %}
+                <tr><td><span class="badge">{{ p.id }}</span></td><td>{{ p.publisher_name }}</td><td>{{ p.phone|default:"—" }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}<p class="empty">Chưa có nhà xuất bản.</p>{% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin-bottom:20px;font-size:1.4rem;font-weight:700;color:#0f172a;">
+    {% if is_customer %}Cửa hàng sách{% else %}Quản lý{% endif %}
+</h2>
+<div class="stats">
+    <div class="stat">
+        <div class="num">{{ total_books }}</div>
+        <div class="lbl">Sách</div>
+    </div>
+    {% if not is_customer %}
+    <div class="stat">
+        <div class="num">{{ total_customers }}</div>
+        <div class="lbl">Khách hàng</div>
+    </div>
+    <div class="stat">
+        <div class="num">{{ total_orders }}</div>
+        <div class="lbl">Đơn hàng</div>
+    </div>
+    {% endif %}
+</div>
+<div class="card">
+    <h2>Liên kết nhanh</h2>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <a href="/books/" class="btn btn-primary">
+            {% if is_customer %}Xem sách{% else %}Quản lý sách{% endif %}
+        </a>
+        <a href="/catalog/" class="btn btn-secondary">Danh mục</a>
+        {% if is_customer %}
+            {% if request.session.user.entity_id %}
+            <a href="/cart/{{ request.session.user.entity_id }}/" class="btn btn-success">Giỏ hàng</a>
+            <a href="/orders/" class="btn btn-secondary">Đơn hàng của tôi</a>
+            {% endif %}
+        {% else %}
+            <a href="/customers/" class="btn btn-success">Khách hàng</a>
+            <a href="/orders/" class="btn btn-secondary">Đơn hàng</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

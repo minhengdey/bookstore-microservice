@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}BookStore{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-page: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-header: #0f172a;
+            --bg-header-hover: #1e293b;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --border: #e2e8f0;
+            --primary: #0d9488;
+            --primary-hover: #0f766e;
+            --primary-light: #ccfbf1;
+            --success: #059669;
+            --success-hover: #047857;
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --warning: #d97706;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+            --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+            background: var(--bg-page);
+            color: var(--text-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+        header {
+            background: var(--bg-header);
+            color: #fff;
+            padding: 0 32px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            min-height: 60px;
+            box-shadow: var(--shadow-md);
+        }
+        header h1 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        header h1 span { opacity: 0.95; }
+        header nav {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        header nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            padding: 10px 14px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            border-radius: var(--radius-sm);
+            transition: color 0.2s, background 0.2s;
+        }
+        header nav a:hover {
+            color: #fff;
+            background: var(--bg-header-hover);
+        }
+        .header-actions {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .user-badge {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .role-pill {
+            background: var(--primary);
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .btn-logout { color: #f87171; font-size: 0.85rem; text-decoration: none; font-weight: 500; }
+        .btn-logout:hover { text-decoration: underline; }
+        .btn-login { color: var(--text-muted); font-size: 0.9rem; text-decoration: none; font-weight: 500; }
+        .btn-login:hover { color: #fff; }
+        .btn-register {
+            background: var(--primary);
+            color: #fff;
+            padding: 8px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .btn-register:hover { background: var(--primary-hover); }
+        .container { max-width: 1120px; margin: 32px auto; padding: 0 20px; }
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 28px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border);
+        }
+        .card h2 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+        }
+        .stat {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            box-shadow: var(--shadow);
+            flex: 1;
+            min-width: 140px;
+            text-align: center;
+            border: 1px solid var(--border);
+            transition: box-shadow 0.2s;
+        }
+        .stat:hover { box-shadow: var(--shadow-md); }
+        .stat .num { font-size: 2rem; font-weight: 700; color: var(--primary); letter-spacing: -0.02em; }
+        .stat .lbl { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; font-weight: 500; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+        th {
+            background: #f8fafc;
+            font-weight: 600;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+        }
+        tbody tr { transition: background 0.15s; }
+        tbody tr:hover td { background: #f8fafc; }
+        .form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; align-items: flex-end; }
+        input[type=text], input[type=email], input[type=number], input[type=password], select {
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 0.9rem;
+            font-family: inherit;
+            flex: 1;
+            min-width: 120px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+        }
+        button, .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 0.88rem;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            font-family: inherit;
+            transition: background 0.2s, transform 0.05s;
+        }
+        button:active, .btn:active { transform: scale(0.98); }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-danger:hover { background: var(--danger-hover); }
+        .btn-success { background: var(--success); color: #fff; }
+        .btn-success:hover { background: var(--success-hover); }
+        .btn-secondary { background: var(--text-secondary); color: #fff; }
+        .btn-secondary:hover { background: #475569; }
+        .alert-error {
+            background: #fef2f2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 0.88rem;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--primary-light);
+            color: var(--primary-hover);
+        }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .empty {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            padding: 32px 16px;
+            text-align: center;
+        }
+        .page-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 24px; color: var(--text-primary); }
+        .page-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px 20px; align-items: end; margin-bottom: 0; }
+        .form-grid .full { grid-column: 1 / -1; }
+        .table-wrap { overflow-x: auto; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+        .card-note { font-size: 0.85rem; color: var(--text-secondary); margin-top: 12px; }
+        .btn-sm { padding: 6px 12px; font-size: 0.82rem; }
+        .summary-row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .summary-total { font-size: 1.15rem; font-weight: 700; color: var(--text-primary); }
+        .card-header-icon { display: inline-flex; align-items: center; gap: 8px; }
+    </style>
+</head>
+<body>
+<header>
+    <h1><span>📚</span> BookStore</h1>
+    <nav>
+        <a href="/">Trang chủ</a>
+        <a href="/books/">Sách</a>
+        {% if request.session.user %}
+            {% if request.session.user.role == 'customer' %}
+                <a href="/cart/{{ request.session.user.entity_id }}/">Giỏ hàng</a>
+                <a href="/orders/">Đơn hàng</a>
+            {% else %}
+                <a href="/customers/">Khách hàng</a>
+                <a href="/orders/">Đơn hàng</a>
+            {% endif %}
+        {% endif %}
+        <a href="/catalog/">Danh mục</a>
+    </nav>
+    <div class="header-actions">
+        {% if request.session.user %}
+            <span class="user-badge">
+                👤 {{ request.session.user.username }}
+                <span class="role-pill">{{ request.session.user.role }}</span>
+            </span>
+            <a href="/logout/" class="btn-logout">Đăng xuất</a>
+        {% else %}
+            <a href="/login/" class="btn-login">Đăng nhập</a>
+            <a href="/register/" class="btn-register">Đăng ký</a>
+        {% endif %}
+    </div>
+</header>
+<div class="container">{% block content %}{% endblock %}</div>
+</body>
+</html>

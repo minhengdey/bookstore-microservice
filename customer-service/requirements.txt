@@ -1,0 +1,5 @@
+django>=4.2,<5.0
+djangorestframework>=3.14
+requests>=2.31
+psycopg2-binary>=2.9
+PyJWT>=2.8

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">📦 Xác nhận đơn hàng</h1>
+
+{% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
+
+<div class="card">
+    <h2>Đơn hàng từ giỏ</h2>
+    {% if cart_items %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Sách</th>
+                    <th>Số lượng</th>
+                    <th>Đơn giá</th>
+                    <th>Thành tiền</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in cart_items %}
+            <tr>
+                <td><span class="badge">{{ item.id }}</span></td>
+                <td>Book #{{ item.book_id }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.unit_price }}₫</td>
+                <td>{{ item.quantity }} × {{ item.unit_price }}₫</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="summary-row">
+        <span class="summary-total">Tổng: {{ cart.total_price }}₫</span>
+    </div>
+    <form method="POST">
+        {% csrf_token %}
+        <div class="page-actions">
+            <a href="/cart/{{ customer_id }}/" class="btn btn-secondary">← Quay lại giỏ hàng</a>
+            <button type="submit" class="btn btn-primary">Tạo đơn hàng và chuyển thanh toán</button>
+        </div>
+    </form>
+    {% else %}
+    <p class="empty">Giỏ hàng trống. <a href="/cart/{{ customer_id }}/">Quay lại giỏ hàng</a> để thêm sản phẩm.</p>
+    <div class="page-actions"><a href="/cart/{{ customer_id }}/" class="btn btn-secondary">← Giỏ hàng</a></div>
+    {% endif %}
+</div>
+{% endblock %}

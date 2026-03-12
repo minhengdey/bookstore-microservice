@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">💳 Thanh toán đơn hàng #{{ order_id }}</h1>
+
+{% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
+
+{% if order %}
+<div class="card">
+    <h2>Thông tin đơn</h2>
+    <p><strong>Mã đơn:</strong> #{{ order.id }} &nbsp;|&nbsp; <strong>Trạng thái:</strong> {{ order.status }}</p>
+    <p><strong>Tổng tiền:</strong> {{ order.total_amount }}₫</p>
+</div>
+
+<div class="card">
+    <h2>Chọn phương thức thanh toán</h2>
+    <form method="POST">
+        {% csrf_token %}
+        <input type="hidden" name="payment_amount" value="{{ order.total_amount }}">
+        <div class="form-row" style="flex-wrap: wrap;">
+            {% for pm in payment_methods %}
+            <label style="display: flex; align-items: center; gap: 8px; margin-right: 16px;">
+                <input type="radio" name="payment_method_id" value="{{ pm.id }}" {% if forloop.first %}checked{% endif %}>
+                <span>{{ pm.method_name }}{% if pm.description %} – {{ pm.description }}{% endif %}</span>
+            </label>
+            {% empty %}
+            <p class="empty">Chưa có phương thức thanh toán. Liên hệ quản trị.</p>
+            {% endfor %}
+        </div>
+        <div class="page-actions" style="margin-top: 16px;">
+            <a href="/orders/" class="btn btn-secondary">← Danh sách đơn</a>
+            {% if payment_methods %}
+            <button type="submit" class="btn btn-primary">Xác nhận thanh toán</button>
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% else %}
+<div class="card">
+    <p class="empty">Không tìm thấy đơn hàng. <a href="/orders/">Xem danh sách đơn</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

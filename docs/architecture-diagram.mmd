@@ -1,0 +1,83 @@
+%% Bookstore Microservice — Architecture Overview
+%% Render: https://mermaid.live hoặc extension Mermaid trong VS Code / Cursor
+
+flowchart TB
+    subgraph External["👤 External Users"]
+        Customer["Customer"]
+        Staff["Staff"]
+        Manager["Manager"]
+    end
+
+    subgraph Gateway["API Gateway :8000"]
+        GW["Django Views<br/>Session Auth<br/>HTML Templates"]
+    end
+
+    subgraph DockerNet["Docker Network: bookstore-net"]
+        subgraph Identity["🔐 Identity"]
+            CS["customer-service :8001<br/>Customer · Address<br/>Job"]
+            SS["staff-service :8004<br/>Staff"]
+            MS["manager-service :8005<br/>Manager"]
+        end
+
+        subgraph Recommendation["🤖 Recommendation"]
+            RA["recommender-ai-service :8011<br/>aggregates (no DB)"]
+        end
+
+        subgraph Catalog["📚 Catalog"]
+            BS["book-service :8002<br/>Publisher · Book<br/>Category"]
+            CatS["catalog-service :8006<br/>Category · BookCategory"]
+        end
+
+        subgraph Ordering["🛒 Ordering"]
+            CartS["cart-service :8003<br/>Cart · CartItem"]
+            OS["order-service :8007<br/>Order · OrderItem"]
+        end
+
+        subgraph Review["⭐ Review"]
+            CRS["comment-rate-service :8010<br/>Review (rating 1-5)"]
+        end
+
+        subgraph Fulfillment["📦 Fulfillment"]
+            PayS["pay-service :8008<br/>Payment"]
+            ShipS["ship-service :8009<br/>Shipment"]
+        end
+    end
+
+    %% External -> API Gateway
+    Customer -->|":8000"| GW
+    Staff -->|":8000"| GW
+    Manager -->|":8000"| GW
+
+    %% API Gateway -> All services (REST)
+    GW -->|REST| CS
+    GW -->|REST| MS
+    GW -->|REST| SS
+    GW -->|REST| RA
+    GW -->|REST| CartS
+    GW -->|REST| OS
+    GW -->|REST| CRS
+    GW -->|REST| BS
+    GW -->|REST| CatS
+    GW -->|REST| PayS
+    GW -->|REST| ShipS
+
+    %% Inter-service: customer-service -> cart-service
+    CS -.->|"POST /carts/<br/>(tạo cart khi register)"| CartS
+
+    %% Inter-service: cart-service -> customer-service (implied when creating cart is triggered by customer)
+    %% cart-service -> book-service
+    CartS -.->|"GET /books/<br/>(validate book_id)"| BS
+
+    %% cart-service <-> order-service (checkout flow)
+    CartS <--> OS
+
+    %% order-service -> book-service
+    OS -.->|"GET /books/:id/<br/>(lấy giá)"| BS
+    %% order-service -> pay, ship, review (theo kiến trúc ảnh)
+    OS -.->|"POST /payments/"| PayS
+    OS -.->|"POST /shipments/"| ShipS
+    OS -.->|"GET /reviews/"| CRS
+
+    %% recommender-ai -> book-service, order-service
+    RA -.->|"GET /books/"| BS
+    RA -.->|"GET /orders/"| OS

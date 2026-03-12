@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="text-align:center;padding:48px 32px;max-width:480px;margin:40px auto;">
+    <div style="font-size:4rem;margin-bottom:16px;line-height:1;">🔒</div>
+    <h2 style="font-size:1.35rem;margin-bottom:12px;">Không có quyền truy cập</h2>
+    <p style="color:var(--text-secondary);margin-bottom:24px;font-size:0.95rem;">
+        {{ message|default:"Bạn không có quyền thực hiện thao tác này." }}
+    </p>
+    <a href="/" class="btn btn-primary">Về trang chủ</a>
+</div>
+{% endblock %}
