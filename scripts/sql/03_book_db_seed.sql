@@ -6,11 +6,11 @@
 TRUNCATE book_languages, book_conditions, book_images, book_publishers, book_genres, book_categories, book_authors, books RESTART IDENTITY CASCADE;
 
 INSERT INTO books (id, title, isbn, description, publication_year, page_count, list_price, sale_price, stock, status, created_date, updated_date) VALUES
-(1, 'Cho tôi xin một vé đi tuổi thơ', '9786041110910', '', 2020, 250, 80000, 72000, 100, 'active', NOW(), NOW()),
-(2, 'Mắt biếc', '9786041110921', '', 2020, 250, 75000, 68000, 80, 'active', NOW(), NOW()),
-(3, 'Nhà giả kim', '9786041110932', '', 2020, 250, 99000, 89000, 50, 'active', NOW(), NOW()),
-(4, 'Rừng Na Uy', '9786041110943', '', 2020, 250, 120000, 108000, 40, 'active', NOW(), NOW()),
-(5, 'Điều kỳ diệu của tiệm tạp hóa Namiya', '9786041110954', '', 2020, 250, 110000, 99000, 30, 'active', NOW(), NOW());
+(1, 'Cho tôi xin một vé đi tuổi thơ', '9786041110910', 'Tác phẩm về ký ức tuổi thơ trong trẻo, cách nhìn thế giới giàu cảm xúc và bài học trưởng thành nhẹ nhàng.', 2020, 250, 80000, 72000, 100, 'active', NOW(), NOW()),
+(2, 'Mắt biếc', '9786041110921', 'Tiểu thuyết tình cảm nổi tiếng với bối cảnh làng quê, học đường và những rung động đầu đời.', 2020, 250, 75000, 68000, 80, 'active', NOW(), NOW()),
+(3, 'Nhà giả kim', '9786041110932', 'Câu chuyện hành trình theo đuổi vận mệnh cá nhân, truyền cảm hứng về ước mơ và lòng kiên định.', 2020, 250, 99000, 89000, 50, 'active', NOW(), NOW()),
+(4, 'Rừng Na Uy', '9786041110943', 'Tiểu thuyết đương đại về cô đơn, tình yêu và những biến chuyển tâm lý trong tuổi trưởng thành.', 2020, 250, 120000, 108000, 40, 'active', NOW(), NOW()),
+(5, 'Điều kỳ diệu của tiệm tạp hóa Namiya', '9786041110954', 'Tác phẩm chữa lành qua những lá thư và lựa chọn cuộc đời, kết nối nhiều số phận theo cách ấm áp.', 2020, 250, 110000, 99000, 30, 'active', NOW(), NOW());
 
 INSERT INTO book_authors (book_id, author_id) VALUES (1, 1), (2, 1), (3, 2), (4, 3), (5, 3);
 INSERT INTO book_categories (book_id, category_id) VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 1);

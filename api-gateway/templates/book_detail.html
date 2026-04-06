@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">📘 Chi tiết sách</h1>
+
+<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+        <div>
+            <h2 style="margin-bottom:8px;">{{ book.title }}</h2>
+            <p style="color:var(--text-secondary);margin-bottom:0;">ISBN: {{ book.isbn|default:"—" }}</p>
+        </div>
+        <span class="badge {% if book.status == 'active' %}badge-success{% else %}badge-warning{% endif %}">{{ book.status }}</span>
+    </div>
+
+    <div class="form-grid" style="margin-top:18px;">
+        <div><strong>Giá bán:</strong> {{ book.sale_price }}₫</div>
+        <div><strong>Giá gốc:</strong> {{ book.list_price }}₫</div>
+        <div><strong>Tồn kho:</strong> {{ book.stock }}</div>
+        <div><strong>Năm xuất bản:</strong> {{ book.publication_year|default:"—" }}</div>
+        <div><strong>Số trang:</strong> {{ book.page_count|default:"—" }}</div>
+    </div>
+
+    <div style="margin-top:20px;">
+        <h3 style="margin-bottom:8px;">Mô tả</h3>
+        <p style="color:var(--text-secondary);">{{ book.description|default:"Chưa có mô tả." }}</p>
+    </div>
+
+    <div class="form-grid" style="margin-top:18px;">
+        <div><strong>Tác giả:</strong> {{ book_catalog.authors|join:", "|default:"—" }}</div>
+        <div><strong>Thể loại:</strong> {{ book_catalog.genres|join:", "|default:"—" }}</div>
+        <div><strong>Danh mục:</strong> {{ book_catalog.categories|join:", "|default:"—" }}</div>
+        <div><strong>Nhà xuất bản:</strong> {{ book_catalog.publishers|join:", "|default:"—" }}</div>
+    </div>
+
+    <div class="page-actions">
+        <a href="/books/" class="btn btn-secondary">← Quay lại danh sách</a>
+        {% if is_customer and customer_id %}
+        <form method="POST" style="display:flex;gap:10px;align-items:center;">
+            {% csrf_token %}
+            <input type="number" name="quantity" value="1" min="1" style="max-width:100px" required>
+            <button type="submit" class="btn btn-success">Thêm vào giỏ hàng</button>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if error %}
+    <div class="alert-error" style="margin-top:12px;">{{ error }}</div>
+    {% endif %}
+</div>
+
+{% if is_customer %}
+<div class="card">
+    <h2>✨ Gợi ý dành cho bạn</h2>
+    {% if recommendations %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tên sách</th>
+                    <th>Giá</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in recommendations %}
+            <tr>
+                <td><span class="badge">{{ item.id }}</span></td>
+                <td>{{ item.title }}</td>
+                <td>{{ item.sale_price }}₫</td>
+                <td><a href="/books/{{ item.id }}/" class="btn btn-primary btn-sm">Xem chi tiết</a></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">Chưa đủ dữ liệu để gợi ý. Hãy xem thêm và thêm sách vào giỏ để hệ thống học sở thích của bạn.</p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

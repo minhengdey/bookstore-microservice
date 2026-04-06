@@ -1,68 +1,81 @@
 {% extends "base.html" %}
 {% block content %}
 <h1 class="page-title">📂 Danh mục</h1>
-<p style="color:var(--text-secondary);margin-bottom:24px;font-size:0.95rem;">Tác giả, thể loại, genre và nhà xuất bản.</p>
+<p style="color:var(--text-secondary);margin-bottom:24px;font-size:0.95rem;">Quản lý dữ liệu danh mục theo từng nhóm.</p>
 
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px;">
-    <div class="card" style="margin-bottom:0;">
-        <h2 style="display:flex;align-items:center;gap:8px;">✒️ Tác giả <span class="badge" style="margin-left:auto;">{{ authors|length }}</span></h2>
-        {% if authors %}
+<div class="card">
+    <div class="page-actions" style="margin-top:0;margin-bottom:18px;">
+        <a class="btn {% if active_tab == 'authors' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=authors">Tác giả</a>
+        <a class="btn {% if active_tab == 'genres' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=genres">Genre</a>
+        <a class="btn {% if active_tab == 'publishers' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=publishers">Nhà xuất bản</a>
+    </div>
+
+    <h2 style="display:flex;align-items:center;gap:8px;">
+        {% if active_tab == 'authors' %}✒️{% elif active_tab == 'genres' %}🏷️{% else %}🏢{% endif %}
+        {{ active_label }}
+    </h2>
+
+    <form method="GET" class="form-row" style="margin-bottom:16px;">
+        <input type="hidden" name="tab" value="{{ active_tab }}">
+        <input type="text" name="search" placeholder="Tìm kiếm..." value="{{ pagination.search }}">
+        <input type="number" name="page_size" min="1" max="200" value="{{ pagination.page_size }}" style="max-width:140px;">
+        <button type="submit" class="btn btn-secondary">Tìm</button>
+    </form>
+
+    {% if items %}
         <div class="table-wrap">
             <table>
-                <thead><tr><th>ID</th><th>Tên</th><th>Năm sinh</th></tr></thead>
+                {% if active_tab == "authors" %}
+                <thead><tr><th>ID</th><th>Tên tác giả</th><th>Năm sinh</th></tr></thead>
                 <tbody>
-                {% for a in authors %}
-                <tr><td><span class="badge">{{ a.id }}</span></td><td>{{ a.author_name }}</td><td>{{ a.birth_year|default:"—" }}</td></tr>
+                {% for a in items %}
+                <tr>
+                    <td><span class="badge">{{ a.id }}</span></td>
+                    <td>{{ a.author_name }}</td>
+                    <td>{{ a.birth_year|default:"—" }}</td>
+                </tr>
                 {% endfor %}
                 </tbody>
-            </table>
-        </div>
-        {% else %}<p class="empty">Chưa có tác giả.</p>{% endif %}
-    </div>
-    <div class="card" style="margin-bottom:0;">
-        <h2 style="display:flex;align-items:center;gap:8px;">📑 Thể loại <span class="badge" style="margin-left:auto;">{{ categories|length }}</span></h2>
-        {% if categories %}
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>ID</th><th>Tên</th></tr></thead>
+                {% elif active_tab == "genres" %}
+                <thead><tr><th>ID</th><th>Tên genre</th><th>Mô tả</th></tr></thead>
                 <tbody>
-                {% for c in categories %}
-                <tr><td><span class="badge">{{ c.id }}</span></td><td>{{ c.category_name }}</td></tr>
+                {% for g in items %}
+                <tr>
+                    <td><span class="badge">{{ g.id }}</span></td>
+                    <td>{{ g.genre_name }}</td>
+                    <td>{{ g.description|default:"—" }}</td>
+                </tr>
                 {% endfor %}
                 </tbody>
-            </table>
-        </div>
-        {% else %}<p class="empty">Chưa có thể loại.</p>{% endif %}
-    </div>
-    <div class="card" style="margin-bottom:0;">
-        <h2 style="display:flex;align-items:center;gap:8px;">🏷️ Genre <span class="badge" style="margin-left:auto;">{{ genres|length }}</span></h2>
-        {% if genres %}
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>ID</th><th>Tên</th></tr></thead>
+                {% else %}
+                <thead><tr><th>ID</th><th>Nhà xuất bản</th><th>Điện thoại</th></tr></thead>
                 <tbody>
-                {% for g in genres %}
-                <tr><td><span class="badge">{{ g.id }}</span></td><td>{{ g.genre_name }}</td></tr>
+                {% for p in items %}
+                <tr>
+                    <td><span class="badge">{{ p.id }}</span></td>
+                    <td>{{ p.publisher_name }}</td>
+                    <td>{{ p.phone|default:"—" }}</td>
+                </tr>
                 {% endfor %}
                 </tbody>
+                {% endif %}
             </table>
         </div>
-        {% else %}<p class="empty">Chưa có genre.</p>{% endif %}
-    </div>
-    <div class="card" style="margin-bottom:0;">
-        <h2 style="display:flex;align-items:center;gap:8px;">🏢 Nhà xuất bản <span class="badge" style="margin-left:auto;">{{ publishers|length }}</span></h2>
-        {% if publishers %}
-        <div class="table-wrap">
-            <table>
-                <thead><tr><th>ID</th><th>Tên</th><th>Điện thoại</th></tr></thead>
-                <tbody>
-                {% for p in publishers %}
-                <tr><td><span class="badge">{{ p.id }}</span></td><td>{{ p.publisher_name }}</td><td>{{ p.phone|default:"—" }}</td></tr>
-                {% endfor %}
-                </tbody>
-            </table>
+        <div class="page-actions" style="justify-content:space-between;align-items:center;">
+            <span style="color:var(--text-secondary);font-size:0.9rem;">
+                Trang {{ pagination.page }}/{{ pagination.total_pages }} • Tổng {{ pagination.count }} bản ghi
+            </span>
+            <div style="display:flex;gap:8px;">
+                {% if pagination.prev_page %}
+                <a class="btn btn-secondary btn-sm" href="{{ pagination.query_for_prev }}">← Trang trước</a>
+                {% endif %}
+                {% if pagination.next_page %}
+                <a class="btn btn-primary btn-sm" href="{{ pagination.query_for_next }}">Trang sau →</a>
+                {% endif %}
+            </div>
         </div>
-        {% else %}<p class="empty">Chưa có nhà xuất bản.</p>{% endif %}
-    </div>
+    {% else %}
+        <p class="empty">Chưa có dữ liệu.</p>
+    {% endif %}
 </div>
 {% endblock %}

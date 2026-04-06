@@ -36,10 +36,10 @@
             {% for item in cart.items %}
             <tr>
                 <td><span class="badge">{{ item.id }}</span></td>
-                <td>Book #{{ item.book_id }}</td>
+                <td><a href="/books/{{ item.book_id }}/" style="color:inherit;text-decoration:underline;">{{ item.book_title }}</a></td>
                 <td>{{ item.quantity }}</td>
                 <td>{{ item.unit_price }}</td>
-                <td>{{ item.unit_price }}</td>
+                <td>{{ item.line_total }}</td>
             </tr>
             {% endfor %}
             </tbody>

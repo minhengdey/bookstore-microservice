@@ -29,6 +29,7 @@
         {% if is_customer %}
             {% if request.session.user.entity_id %}
             <a href="/cart/{{ request.session.user.entity_id }}/" class="btn btn-success">Giỏ hàng</a>
+            <a href="/recommendations/" class="btn btn-primary">Đề xuất AI</a>
             <a href="/orders/" class="btn btn-secondary">Đơn hàng của tôi</a>
             {% endif %}
         {% else %}

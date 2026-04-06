@@ -8,10 +8,51 @@ from app.permissions import require_staff, require_manager
 _svc = StaffService()
 
 
+def _parse_positive_int(value, default):
+    try:
+        parsed = int(value)
+        return parsed if parsed > 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _paginate_and_search(request, objs, serializer_cls):
+    if hasattr(objs, "order_by"):
+        objs = objs.order_by("id")
+    else:
+        objs = sorted(objs, key=lambda x: getattr(x, "id", 0))
+    data = list(serializer_cls(objs, many=True).data)
+    keyword = (request.query_params.get("search") or "").strip().lower()
+    if keyword:
+        data = [
+            item for item in data
+            if any(keyword in str(value).lower() for value in item.values() if value is not None)
+        ]
+    page = _parse_positive_int(request.query_params.get("page"), 1)
+    page_size = min(_parse_positive_int(request.query_params.get("page_size"), 10), 200)
+    total = len(data)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+    start = (page - 1) * page_size
+    end = start + page_size
+    next_page = page + 1 if page < total_pages else None
+    prev_page = page - 1 if page > 1 else None
+    return {
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "next_page": next_page,
+        "prev_page": prev_page,
+        "results": data[start:end],
+    }
+
+
 class StaffListCreateView(APIView):
     @require_staff
     def get(self, request):
-        return Response(InventoryStaffSerializer(_svc.list_staff(), many=True).data)
+        return Response(_paginate_and_search(request, _svc.list_staff(), InventoryStaffSerializer))
 
     @require_manager
     def post(self, request):

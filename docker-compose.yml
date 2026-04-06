@@ -182,6 +182,15 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=${DB_HOST:-host.docker.internal}
       - DB_PORT=${DB_PORT:-5432}
+      - ORDER_SERVICE_URL=http://order-service:8000
+      - BOOK_SERVICE_URL=http://book-service:8000
+      - IMPLICIT_CF_DATA_DIR=/app/data/implicit_cf
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-fast}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./recommender-ai-service/data:/app/data
     networks:
       - bookstore-net
     extra_hosts:

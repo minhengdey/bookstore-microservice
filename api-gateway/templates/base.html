@@ -245,6 +245,7 @@
         {% if request.session.user %}
             {% if request.session.user.role == 'customer' %}
                 <a href="/cart/{{ request.session.user.entity_id }}/">Giỏ hàng</a>
+                <a href="/recommendations/">Đề xuất AI</a>
                 <a href="/orders/">Đơn hàng</a>
             {% else %}
                 <a href="/customers/">Khách hàng</a>
@@ -267,5 +268,20 @@
     </div>
 </header>
 <div class="container">{% block content %}{% endblock %}</div>
+
+    <!-- Tích hợp AI Trợ lý Tư Vấn -->
+    {% if request.session.user %}
+    <script>
+        // Gọi ID thật của user đang đăng nhập để cá nhân hóa kết quả AI
+        window.BookAI_Profile = { 
+            user_id: {{ request.session.user.entity_id|default:1 }},
+            age: 25, 
+            gender: "male", 
+            location_id: 1 
+        };
+    </script>
+    {% endif %}
+    <script src="/static/chatbot-widget.js?v=20260406"></script>
+    
 </body>
 </html>

@@ -34,6 +34,11 @@
 
 <div class="card">
     <h2>Danh sách khách hàng</h2>
+    <form method="GET" class="form-row" style="margin-bottom:16px;">
+        <input type="text" name="search" placeholder="Tìm kiếm theo tên, email, điện thoại..." value="{{ customers_pagination.search }}">
+        <input type="number" name="page_size" min="1" max="200" value="{{ customers_pagination.page_size }}" style="max-width:140px;">
+        <button type="submit" class="btn btn-secondary">Tìm</button>
+    </form>
     {% if customers %}
     <div class="table-wrap">
         <table>
@@ -63,6 +68,19 @@
             {% endfor %}
             </tbody>
         </table>
+    </div>
+    <div class="page-actions" style="justify-content:space-between;align-items:center;">
+        <span style="color:var(--text-secondary);font-size:0.9rem;">
+            Trang {{ customers_pagination.page }}/{{ customers_pagination.total_pages }} • Tổng {{ customers_pagination.count }} khách hàng
+        </span>
+        <div style="display:flex;gap:8px;">
+            {% if customers_pagination.prev_page %}
+            <a class="btn btn-secondary btn-sm" href="{{ customers_pagination.query_for_prev }}">← Trang trước</a>
+            {% endif %}
+            {% if customers_pagination.next_page %}
+            <a class="btn btn-primary btn-sm" href="{{ customers_pagination.query_for_next }}">Trang sau →</a>
+            {% endif %}
+        </div>
     </div>
     {% else %}
     <p class="empty">Chưa có khách hàng.</p>

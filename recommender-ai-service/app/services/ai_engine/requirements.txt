@@ -1,0 +1,14 @@
+# Core ML / DL
+torch>=2.1.0
+numpy>=1.24.0
+
+# Embeddings & Vector Search
+sentence-transformers>=2.6.0
+faiss-cpu>=1.7.4            # use faiss-gpu if CUDA available
+
+# LLM backends (at least one recommended)
+anthropic>=0.28.0           # Anthropic Claude
+openai>=1.30.0              # OpenAI GPT (optional fallback)
+
+# Utilities
+tqdm>=4.66.0

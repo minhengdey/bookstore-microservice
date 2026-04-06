@@ -82,6 +82,9 @@ build_auth.log
 # ─── Jupyter / Notebooks ─────────────────────────────────────────────────────
 .ipynb_checkpoints/
 
+# ─── Recommender trained ALS artifacts (regenerate từ train_implicit_cf) ─────
+recommender-ai-service/data/implicit_cf/
+
 # ─── Optional: uncomment if you use ──────────────────────────────────────────
 # node_modules/   # if any frontend tooling
 # *.sql.backup    # if you want to ignore DB backups

@@ -9,6 +9,11 @@
 {% endif %}
 
 <div class="card">
+    <form method="GET" class="form-row" style="margin-bottom:16px;">
+        <input type="text" name="search" placeholder="Tìm kiếm theo trạng thái, mã đơn..." value="{{ orders_pagination.search }}">
+        <input type="number" name="page_size" min="1" max="200" value="{{ orders_pagination.page_size }}" style="max-width:140px;">
+        <button type="submit" class="btn btn-secondary">Tìm</button>
+    </form>
     {% if orders %}
     <div class="table-wrap">
         <table>
@@ -37,6 +42,19 @@
             {% endfor %}
             </tbody>
         </table>
+    </div>
+    <div class="page-actions" style="justify-content:space-between;align-items:center;">
+        <span style="color:var(--text-secondary);font-size:0.9rem;">
+            Trang {{ orders_pagination.page }}/{{ orders_pagination.total_pages }} • Tổng {{ orders_pagination.count }} đơn hàng
+        </span>
+        <div style="display:flex;gap:8px;">
+            {% if orders_pagination.prev_page %}
+            <a class="btn btn-secondary btn-sm" href="{{ orders_pagination.query_for_prev }}">← Trang trước</a>
+            {% endif %}
+            {% if orders_pagination.next_page %}
+            <a class="btn btn-primary btn-sm" href="{{ orders_pagination.query_for_next }}">Trang sau →</a>
+            {% endif %}
+        </div>
     </div>
     {% else %}
     <p class="empty">Chưa có đơn hàng.</p>

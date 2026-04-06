@@ -44,6 +44,11 @@
 
 <div class="card">
     <h2>Danh sách sách</h2>
+    <form method="GET" class="form-row" style="margin-bottom:16px;">
+        <input type="text" name="search" placeholder="Tìm kiếm theo tên sách, ISBN..." value="{{ books_pagination.search }}">
+        <input type="number" name="page_size" min="1" max="200" value="{{ books_pagination.page_size }}" style="max-width:140px;">
+        <button type="submit" class="btn btn-secondary">Tìm</button>
+    </form>
     {% if books %}
     <div class="table-wrap">
         <table>
@@ -63,7 +68,7 @@
             {% for book in books %}
             <tr>
                 <td><span class="badge">{{ book.id }}</span></td>
-                <td><strong>{{ book.title }}</strong></td>
+                <td><strong><a href="/books/{{ book.id }}/" style="color:inherit;text-decoration:underline;">{{ book.title }}</a></strong></td>
                 <td>{{ book.isbn|default:"—" }}</td>
                 <td>{{ book.list_price }}</td>
                 <td>{{ book.sale_price }}</td>
@@ -81,6 +86,19 @@
             {% endfor %}
             </tbody>
         </table>
+    </div>
+    <div class="page-actions" style="justify-content:space-between;align-items:center;">
+        <span style="color:var(--text-secondary);font-size:0.9rem;">
+            Trang {{ books_pagination.page }}/{{ books_pagination.total_pages }} • Tổng {{ books_pagination.count }} sách
+        </span>
+        <div style="display:flex;gap:8px;">
+            {% if books_pagination.prev_page %}
+            <a class="btn btn-secondary btn-sm" href="{{ books_pagination.query_for_prev }}">← Trang trước</a>
+            {% endif %}
+            {% if books_pagination.next_page %}
+            <a class="btn btn-primary btn-sm" href="{{ books_pagination.query_for_next }}">Trang sau →</a>
+            {% endif %}
+        </div>
     </div>
     {% else %}
     <p class="empty">Chưa có sách.</p>

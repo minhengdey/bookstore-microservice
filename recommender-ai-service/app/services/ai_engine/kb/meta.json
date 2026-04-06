@@ -1,0 +1,250 @@
+[
+  {
+    "service_id": "SVC001",
+    "service_name": "Premium Health Insurance",
+    "category": "Insurance",
+    "description": "Comprehensive health coverage including inpatient, outpatient, dental, and vision benefits. Suitable for families and individuals who want zero-surprise medical bills.",
+    "target_age_range": "25-60",
+    "price_range": "$$",
+    "tags": [
+      "health",
+      "medical",
+      "insurance",
+      "family",
+      "coverage"
+    ],
+    "document": "Service ID: SVC001\nName: Premium Health Insurance\nCategory: Insurance\nDescription: Comprehensive health coverage including inpatient, outpatient, dental, and vision benefits. Suitable for families and individuals who want zero-surprise medical bills.\nTarget Age Range: 25-60\nPrice Range: $$\nTags: health, medical, insurance, family, coverage"
+  },
+  {
+    "service_id": "SVC002",
+    "service_name": "Smart Investment Portfolio",
+    "category": "Finance",
+    "description": "AI-driven investment management with diversified portfolios across stocks, bonds, ETFs, and crypto. Ideal for medium-to-long term wealth growth with personalised risk profiling.",
+    "target_age_range": "25-55",
+    "price_range": "$$$",
+    "tags": [
+      "investment",
+      "finance",
+      "wealth",
+      "portfolio",
+      "stocks"
+    ],
+    "document": "Service ID: SVC002\nName: Smart Investment Portfolio\nCategory: Finance\nDescription: AI-driven investment management with diversified portfolios across stocks, bonds, ETFs, and crypto. Ideal for medium-to-long term wealth growth with personalised risk profiling.\nTarget Age Range: 25-55\nPrice Range: $$$\nTags: investment, finance, wealth, portfolio, stocks"
+  },
+  {
+    "service_id": "SVC003",
+    "service_name": "E-Learning Pro Subscription",
+    "category": "Education",
+    "description": "Unlimited access to 10,000+ courses in technology, business, design, and personal development. Includes certificates, mentorship sessions, and a community of 2M+ learners.",
+    "target_age_range": "18-45",
+    "price_range": "$",
+    "tags": [
+      "education",
+      "learning",
+      "courses",
+      "skills",
+      "career"
+    ],
+    "document": "Service ID: SVC003\nName: E-Learning Pro Subscription\nCategory: Education\nDescription: Unlimited access to 10,000+ courses in technology, business, design, and personal development. Includes certificates, mentorship sessions, and a community of 2M+ learners.\nTarget Age Range: 18-45\nPrice Range: $\nTags: education, learning, courses, skills, career"
+  },
+  {
+    "service_id": "SVC004",
+    "service_name": "Home Security System",
+    "category": "Smart Home",
+    "description": "24/7 monitored home security with AI motion detection, smart locks, and real-time mobile alerts. Easy DIY installation with professional monitoring option.",
+    "target_age_range": "30-65",
+    "price_range": "$$",
+    "tags": [
+      "security",
+      "home",
+      "smart",
+      "safety",
+      "IoT"
+    ],
+    "document": "Service ID: SVC004\nName: Home Security System\nCategory: Smart Home\nDescription: 24/7 monitored home security with AI motion detection, smart locks, and real-time mobile alerts. Easy DIY installation with professional monitoring option.\nTarget Age Range: 30-65\nPrice Range: $$\nTags: security, home, smart, safety, IoT"
+  },
+  {
+    "service_id": "SVC005",
+    "service_name": "Telehealth Consultation",
+    "category": "Healthcare",
+    "description": "On-demand video consultations with licensed doctors and specialists. Prescriptions, lab referrals, and mental health support — all from the comfort of home.",
+    "target_age_range": "18-70",
+    "price_range": "$",
+    "tags": [
+      "telehealth",
+      "doctor",
+      "healthcare",
+      "online",
+      "mental health"
+    ],
+    "document": "Service ID: SVC005\nName: Telehealth Consultation\nCategory: Healthcare\nDescription: On-demand video consultations with licensed doctors and specialists. Prescriptions, lab referrals, and mental health support — all from the comfort of home.\nTarget Age Range: 18-70\nPrice Range: $\nTags: telehealth, doctor, healthcare, online, mental health"
+  },
+  {
+    "service_id": "SVC006",
+    "service_name": "Premium Travel Insurance",
+    "category": "Insurance",
+    "description": "Worldwide travel coverage including trip cancellation, medical emergency, luggage loss, and flight delay compensation. Designed for frequent and leisure travellers.",
+    "target_age_range": "20-65",
+    "price_range": "$$",
+    "tags": [
+      "travel",
+      "insurance",
+      "trip",
+      "holiday",
+      "coverage"
+    ],
+    "document": "Service ID: SVC006\nName: Premium Travel Insurance\nCategory: Insurance\nDescription: Worldwide travel coverage including trip cancellation, medical emergency, luggage loss, and flight delay compensation. Designed for frequent and leisure travellers.\nTarget Age Range: 20-65\nPrice Range: $$\nTags: travel, insurance, trip, holiday, coverage"
+  },
+  {
+    "service_id": "SVC007",
+    "service_name": "Business Cloud Suite",
+    "category": "Technology",
+    "description": "All-in-one cloud platform for SMEs: CRM, project management, invoicing, HR, and analytics. Scales from 1 to 500 employees with enterprise-grade security.",
+    "target_age_range": "25-55",
+    "price_range": "$$$",
+    "tags": [
+      "business",
+      "cloud",
+      "SaaS",
+      "CRM",
+      "enterprise",
+      "SME"
+    ],
+    "document": "Service ID: SVC007\nName: Business Cloud Suite\nCategory: Technology\nDescription: All-in-one cloud platform for SMEs: CRM, project management, invoicing, HR, and analytics. Scales from 1 to 500 employees with enterprise-grade security.\nTarget Age Range: 25-55\nPrice Range: $$$\nTags: business, cloud, SaaS, CRM, enterprise, SME"
+  },
+  {
+    "service_id": "SVC008",
+    "service_name": "Fitness & Nutrition Coaching",
+    "category": "Wellness",
+    "description": "Personalised workout plans, macro tracking, and weekly 1-on-1 video coaching sessions with certified trainers. Suitable for weight loss, muscle gain, or general well-being goals.",
+    "target_age_range": "18-55",
+    "price_range": "$$",
+    "tags": [
+      "fitness",
+      "nutrition",
+      "workout",
+      "wellness",
+      "health",
+      "coach"
+    ],
+    "document": "Service ID: SVC008\nName: Fitness & Nutrition Coaching\nCategory: Wellness\nDescription: Personalised workout plans, macro tracking, and weekly 1-on-1 video coaching sessions with certified trainers. Suitable for weight loss, muscle gain, or general well-being goals.\nTarget Age Range: 18-55\nPrice Range: $$\nTags: fitness, nutrition, workout, wellness, health, coach"
+  },
+  {
+    "service_id": "SVC009",
+    "service_name": "Legal Advisory Membership",
+    "category": "Legal",
+    "description": "Unlimited consultations with qualified lawyers covering contracts, family law, property, and business law. Document review and draft services included for members.",
+    "target_age_range": "25-65",
+    "price_range": "$$$",
+    "tags": [
+      "legal",
+      "lawyer",
+      "contract",
+      "advisory",
+      "property",
+      "business"
+    ],
+    "document": "Service ID: SVC009\nName: Legal Advisory Membership\nCategory: Legal\nDescription: Unlimited consultations with qualified lawyers covering contracts, family law, property, and business law. Document review and draft services included for members.\nTarget Age Range: 25-65\nPrice Range: $$$\nTags: legal, lawyer, contract, advisory, property, business"
+  },
+  {
+    "service_id": "SVC010",
+    "service_name": "Children Education Fund",
+    "category": "Finance",
+    "description": "A government-linked savings plan optimised for children's education expenses. Tax-advantaged contributions, guaranteed growth, and flexible withdrawal for tuition fees.",
+    "target_age_range": "25-45",
+    "price_range": "$$",
+    "tags": [
+      "children",
+      "education",
+      "savings",
+      "fund",
+      "tuition",
+      "family"
+    ],
+    "document": "Service ID: SVC010\nName: Children Education Fund\nCategory: Finance\nDescription: A government-linked savings plan optimised for children's education expenses. Tax-advantaged contributions, guaranteed growth, and flexible withdrawal for tuition fees.\nTarget Age Range: 25-45\nPrice Range: $$\nTags: children, education, savings, fund, tuition, family"
+  },
+  {
+    "service_id": "SVC011",
+    "service_name": "Cyber Security Shield",
+    "category": "Technology",
+    "description": "Enterprise-grade cyber protection for individuals and small businesses: VPN, dark web monitoring, identity theft protection, and real-time threat intelligence.",
+    "target_age_range": "20-60",
+    "price_range": "$$",
+    "tags": [
+      "cyber",
+      "security",
+      "VPN",
+      "privacy",
+      "identity",
+      "protection"
+    ],
+    "document": "Service ID: SVC011\nName: Cyber Security Shield\nCategory: Technology\nDescription: Enterprise-grade cyber protection for individuals and small businesses: VPN, dark web monitoring, identity theft protection, and real-time threat intelligence.\nTarget Age Range: 20-60\nPrice Range: $$\nTags: cyber, security, VPN, privacy, identity, protection"
+  },
+  {
+    "service_id": "SVC012",
+    "service_name": "Retirement Savings Plan",
+    "category": "Finance",
+    "description": "Long-term pension and retirement savings product with employer-matching options, low fees, and diversified fund choices. Designed to maximise post-retirement income.",
+    "target_age_range": "30-60",
+    "price_range": "$$",
+    "tags": [
+      "retirement",
+      "pension",
+      "savings",
+      "long-term",
+      "finance"
+    ],
+    "document": "Service ID: SVC012\nName: Retirement Savings Plan\nCategory: Finance\nDescription: Long-term pension and retirement savings product with employer-matching options, low fees, and diversified fund choices. Designed to maximise post-retirement income.\nTarget Age Range: 30-60\nPrice Range: $$\nTags: retirement, pension, savings, long-term, finance"
+  },
+  {
+    "service_id": "SVC013",
+    "service_name": "Pet Care & Insurance",
+    "category": "Insurance",
+    "description": "Vet bills, surgery, medication, and wellness check coverage for dogs, cats, and exotic pets. Includes 24/7 pet telehealth and an online vet pharmacy.",
+    "target_age_range": "20-55",
+    "price_range": "$",
+    "tags": [
+      "pet",
+      "insurance",
+      "vet",
+      "animals",
+      "dog",
+      "cat"
+    ],
+    "document": "Service ID: SVC013\nName: Pet Care & Insurance\nCategory: Insurance\nDescription: Vet bills, surgery, medication, and wellness check coverage for dogs, cats, and exotic pets. Includes 24/7 pet telehealth and an online vet pharmacy.\nTarget Age Range: 20-55\nPrice Range: $\nTags: pet, insurance, vet, animals, dog, cat"
+  },
+  {
+    "service_id": "SVC014",
+    "service_name": "Real Estate Advisory",
+    "category": "Property",
+    "description": "Expert guidance for buying, selling, and renting property. Includes mortgage pre-approval support, valuation reports, neighbourhood analytics, and legal due-diligence.",
+    "target_age_range": "28-65",
+    "price_range": "$$$",
+    "tags": [
+      "real estate",
+      "property",
+      "mortgage",
+      "buying",
+      "selling",
+      "rent"
+    ],
+    "document": "Service ID: SVC014\nName: Real Estate Advisory\nCategory: Property\nDescription: Expert guidance for buying, selling, and renting property. Includes mortgage pre-approval support, valuation reports, neighbourhood analytics, and legal due-diligence.\nTarget Age Range: 28-65\nPrice Range: $$$\nTags: real estate, property, mortgage, buying, selling, rent"
+  },
+  {
+    "service_id": "SVC015",
+    "service_name": "Digital Marketing Starter Pack",
+    "category": "Business",
+    "description": "Done-for-you digital marketing: SEO audit, social media strategy, Google Ads management, and monthly performance reporting. Tailored for startups and small businesses.",
+    "target_age_range": "22-50",
+    "price_range": "$$",
+    "tags": [
+      "marketing",
+      "SEO",
+      "social media",
+      "ads",
+      "business",
+      "startup"
+    ],
+    "document": "Service ID: SVC015\nName: Digital Marketing Starter Pack\nCategory: Business\nDescription: Done-for-you digital marketing: SEO audit, social media strategy, Google Ads management, and monthly performance reporting. Tailored for startups and small businesses.\nTarget Age Range: 22-50\nPrice Range: $$\nTags: marketing, SEO, social media, ads, business, startup"
+  }
+]

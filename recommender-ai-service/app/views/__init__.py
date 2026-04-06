@@ -1,2 +1,3 @@
-from .recommender_views import RecommendationView
-__all__ = ["RecommendationView"]
+from .recommender_views import RecommendationView, BehaviorEventView
+
+__all__ = ["RecommendationView", "BehaviorEventView"]

@@ -5,6 +5,7 @@ from app.views import (
     CustomerLoginView, CustomerTokenRefreshView,
     CustomerRegisterView, CustomerMeView,
 )
+from app.views.metrics_views import CustomerMetricsView
 
 urlpatterns = [
     # ── Auth endpoints ────────────────────────────────────────────────────────
@@ -18,4 +19,7 @@ urlpatterns = [
     path("customers/<int:pk>/",                                CustomerDetailView.as_view()),
     path("customers/<int:customer_id>/addresses/",             AddressListCreateView.as_view()),
     path("customers/<int:customer_id>/addresses/<int:pk>/",    AddressDetailView.as_view()),
+    
+    # ── Internal Service Metrics ──────────────────────────────────────────────
+    path("customers/metrics/",                                 CustomerMetricsView.as_view()),
 ]

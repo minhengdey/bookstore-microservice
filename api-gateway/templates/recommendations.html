@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="page-title">🤖 Sách đề xuất cho tôi</h1>
+
+{% if error %}
+<div class="alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+    <div class="page-actions" style="margin-top:0;margin-bottom:16px;">
+        <a href="/books/" class="btn btn-secondary">← Xem tất cả sách</a>
+        <a href="/cart/{{ customer_id }}/" class="btn btn-primary">Đến giỏ hàng</a>
+    </div>
+
+    {% if recommendations %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tên sách</th>
+                    <th>Giá bán</th>
+                    <th>Tồn kho</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for book in recommendations %}
+            <tr>
+                <td><span class="badge">{{ book.id }}</span></td>
+                <td><a href="/books/{{ book.id }}/" style="color:inherit;text-decoration:underline;">{{ book.title }}</a></td>
+                <td>{{ book.sale_price }}₫</td>
+                <td>{{ book.stock }}</td>
+                <td>
+                    <form method="POST" style="display:flex;gap:8px;align-items:center;">
+                        {% csrf_token %}
+                        <input type="hidden" name="book_id" value="{{ book.id }}">
+                        <input type="number" name="quantity" value="1" min="1" style="max-width:80px;" required>
+                        <button type="submit" class="btn btn-success btn-sm">Thêm giỏ</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="empty">Chưa có dữ liệu đủ mạnh để gợi ý. Bạn hãy xem thêm sách và thêm vào giỏ, hệ thống sẽ học dần sở thích.</p>
+    {% endif %}
+</div>
+{% endblock %}

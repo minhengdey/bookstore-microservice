@@ -19,6 +19,15 @@ do
     sleep 2
 done
 echo "[entrypoint] PostgreSQL is ready!"
+
+echo "[entrypoint] Initializing bookstore Knowledge Base and FAISS index..."
+python app/services/ai_engine/main.py --kb-only --rebuild-kb
+
 python manage.py makemigrations app --no-input
 python manage.py migrate --no-input
-exec python manage.py runserver 0.0.0.0:8000
+
+echo "[entrypoint] Starting cron and adding django crontab..."
+service cron start
+python manage.py crontab add
+
+exec python manage.py runserver 0.0.0.0:8000 --noreload

@@ -17,6 +17,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 | GET | `/register/` | Form đăng ký |
 | POST | `/register/` | Đăng ký khách hàng |
 | GET | `/books/` | Danh sách sách |
+| GET/POST | `/books/<book_id>/` | Chi tiết sách / thêm vào giỏ (customer) + ghi nhận hành vi |
 | GET | `/books/<book_id>/delete/` | Xóa sách (staff) |
 | GET | `/customers/` | Danh sách khách hàng |
 | GET/POST | `/cart/<customer_id>/` | Xem giỏ hàng / thêm sản phẩm |
@@ -172,6 +173,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 | Method | Path | Mô tả | Auth |
 |--------|------|--------|------|
 | GET | `/recommendations/<customer_id>/` | Gợi ý sách theo khách hàng | Auth |
+| POST | `/api/recommender/events/` | Ghi nhận hành vi người dùng (`click`, `view`, `cart_add`, ...) | Auth |
 
 ---
 

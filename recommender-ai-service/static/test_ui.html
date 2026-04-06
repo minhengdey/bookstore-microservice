@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-commerce Store Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        .header {
+            background: #ab8e54;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            padding: 50px;
+            text-align: center;
+            color: #333;
+        }
+        .placeholder-products {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 40px;
+        }
+        .dummy-card {
+            width: 200px;
+            height: 250px;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Sách Hay Mỗi Ngày - Hệ thống Bookstore</h1>
+    </div>
+
+    <div class="content">
+        <h2>Chào mừng bạn trở lại!</h2>
+        <p>Đây là 1 trang Web trống ngẫu nhiên đóng vai trò là Giao diện E-commerce chính.</p>
+        <p>Nhờ nhúng dòng Script của AI Recommender, Trợ lý ảo sẽ tự động xuất hiện ở góc dưới bên phải.</p>
+        
+        <div class="placeholder-products">
+            <div class="dummy-card">Sách A</div>
+            <div class="dummy-card">Sách B</div>
+            <div class="dummy-card">Sách C</div>
+        </div>
+    </div>
+
+    <!-- TÍCH HỢP TRỢ LÝ ẢO VỚI ĐÚNG 1 DÒNG SCRIPT -->
+    <script>
+        // Tuỳ chọn (Optional): Truyền thông số user nếu Auth đã đăng nhập
+        window.BookAI_Profile = { 
+            user_id: 1, 
+            age: 26, 
+            gender: "female", 
+            location_id: 12 
+        };
+    </script>
+    <script src="http://localhost:8011/static/chatbot-widget.js"></script>
+    
+</body>
+</html>

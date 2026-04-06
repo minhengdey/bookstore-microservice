@@ -5,7 +5,6 @@
 
 param([switch]$Clear)
 $ErrorActionPreference = "Stop"
-$extra = if ($Clear) { " --clear" } else { "" }
 $services = @(
     "customer-service",
     "catalog-service",
@@ -31,7 +30,9 @@ Write-Host "=== Seed mock data (thu muc: $root) ===" -ForegroundColor Cyan
 foreach ($svc in $services) {
     Write-Host ""
     Write-Host "[$svc] Running seed_mock..." -ForegroundColor Yellow
-    docker compose exec -T $svc python manage.py seed_mock$extra
+    $cmd = @("compose", "exec", "-T", $svc, "python", "manage.py", "seed_mock")
+    if ($Clear) { $cmd += "--clear" }
+    docker @cmd
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Loi tai $svc" -ForegroundColor Red
         exit $LASTEXITCODE
