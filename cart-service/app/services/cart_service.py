@@ -4,7 +4,7 @@ from app.repositories import CartRepository
 
 logger = logging.getLogger(__name__)
 
-BOOK_SERVICE_URL = "http://book-service:8000"
+BOOK_SERVICE_URL = "http://product-service:8000"
 
 
 class CartService:

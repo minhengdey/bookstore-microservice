@@ -21,7 +21,7 @@
     link.href = `${staticBase}/static/chatbot-widget.css?v=20260406`;
     document.head.appendChild(link);
 
-    // 2. Chèn bộ xương HTML (Widget Skeleton)
+    // Chèn bộ xương HTML (Widget Skeleton)
     const container = document.createElement("div");
     container.id = "book-ai-widget-container";
     container.innerHTML = `
@@ -29,7 +29,7 @@
         <div class="book-ai-window" id="book-ai-window">
             <div class="book-ai-header">
                 <div class="book-ai-header-title">
-                    <i></i> Trợ lý Tư vấn AI
+                    <i></i> Mochi Tư Vấn 💖
                 </div>
                 <button class="book-ai-close" id="book-ai-close-btn">&times;</button>
             </div>
@@ -37,7 +37,7 @@
             <div class="book-ai-body" id="book-ai-body">
                 <!-- Tin nhắn mặc định chào hỏi -->
                 <div class="book-ai-msg book-ai-msg-ai">
-                    <p>Chào bạn! Mình là Trợ lý AI của bookstore. Mình có thể gợi ý sách theo thể loại, nhu cầu đọc và mức giá. Bạn đang muốn tìm sách gì?</p>
+                    <p>Chào bạn nè! Mình là Mochi, trợ lý tư vấn siêu cấp đáng yêu của tiệm sách nè. 🌸 Bạn đang tìm sách gì để đọc cho "chill" hay để học tập đó? Cứ nói mình biết nha! ✨</p>
                 </div>
                 
                 <!-- Typing Indicator -->
@@ -49,7 +49,7 @@
             </div>
             
             <div class="book-ai-footer">
-                <input type="text" class="book-ai-input" id="book-ai-input" placeholder="Hỏi gì đó..." autocomplete="off">
+                <input type="text" class="book-ai-input" id="book-ai-input" placeholder="Nhắn gì đó với Mochi nha..." autocomplete="off">
                 <button class="book-ai-send" id="book-ai-send-btn">
                     <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
                 </button>
@@ -63,6 +63,26 @@
     `;
     document.body.appendChild(container);
 
+    // Behavioral Tracking Logic (Session based)
+    const trackLocalBehavior = () => {
+        const path = window.location.pathname;
+        const match = path.match(/\/books\/(\d+)\//);
+        if (match) {
+            const bookId = match[1];
+            let behaviors = JSON.parse(sessionStorage.getItem("mochi_recent_behaviors") || "[]");
+            // Only add if not already the last one
+            if (behaviors[behaviors.length - 1] !== `view_book_${bookId}`) {
+                behaviors.push(`view_book_${bookId}`);
+                sessionStorage.setItem("mochi_recent_behaviors", JSON.stringify(behaviors.slice(-5)));
+            }
+        }
+    };
+    trackLocalBehavior();
+
+    const getRecentBehaviors = () => {
+        return JSON.parse(sessionStorage.getItem("mochi_recent_behaviors") || "[]");
+    };
+
     // 3. Logic Tương tác (Interactivity)
     const fab = document.getElementById("book-ai-fab");
     const win = document.getElementById("book-ai-window");
@@ -72,8 +92,7 @@
     const body = document.getElementById("book-ai-body");
     const typing = document.getElementById("book-ai-typing");
 
-    // Default Fake Profile Configuration (nếu Frontend của bạn chưa truyền vào)
-    // Tương lai: `window.BookAI_Profile = { userId: 1, age: 25, ... }`
+    // Default Fake Profile Configuration
     const getUserProfile = () => {
         return window.BookAI_Profile || { age: 25, gender: "male", location_id: 1 };
     };
@@ -82,35 +101,23 @@
         return String((profile && profile.user_id) || "anonymous");
     };
     const storageKey = () => `book_ai_chat_history:${getUserId()}`;
-    const MAX_MESSAGES = 24; // 12 turns (user+assistant)
+    const MAX_MESSAGES = 24;
 
     const loadHistory = () => {
         try {
             const raw = localStorage.getItem(storageKey());
             const parsed = raw ? JSON.parse(raw) : [];
             if (!Array.isArray(parsed)) return [];
-            return parsed.filter(
-                (m) =>
-                    Array.isArray(m) &&
-                    m.length === 2 &&
-                    (m[0] === "user" || m[0] === "assistant") &&
-                    typeof m[1] === "string" &&
-                    m[1].trim()
-            ).slice(-MAX_MESSAGES);
-        } catch (_e) {
-            return [];
-        }
+            return parsed.slice(-MAX_MESSAGES);
+        } catch (_e) { return []; }
     };
 
     const saveHistory = (history) => {
         try {
             localStorage.setItem(storageKey(), JSON.stringify(history.slice(-MAX_MESSAGES)));
-        } catch (_e) {
-            // Ignore storage errors (private mode/quota)
-        }
+        } catch (_e) {}
     };
 
-    // Toggle Chat Window
     fab.addEventListener("click", () => {
         win.classList.add("book-ai-open");
         fab.style.display = "none";
@@ -122,23 +129,19 @@
         setTimeout(() => { fab.style.display = "flex"; }, 300);
     });
 
-    const scrollToBottom = () => {
-        body.scrollTop = body.scrollHeight;
-    };
+    const scrollToBottom = () => { body.scrollTop = body.scrollHeight; };
 
     const addMessage = (text, isUser = false) => {
         const msgDiv = document.createElement("div");
         msgDiv.className = `book-ai-msg ${isUser ? 'book-ai-msg-user' : 'book-ai-msg-ai'}`;
         
-        // Simple Markdown Parser (Bold & Bullets)
+        // Simple Markdown
         let formatted = text
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/\n\s*-\s/g, '<br>• ');
+            .replace(/\n/g, '<br>');
             
         msgDiv.innerHTML = `<p>${formatted}</p>`;
-        
-        // Chèn tin nhắn mới NẰM TRÊN Indicator Typing
         body.insertBefore(msgDiv, typing);
         scrollToBottom();
     };
@@ -152,62 +155,49 @@
         const text = input.value.trim();
         if (!text) return;
 
-        // Add user msg
         addMessage(text, true);
         chatHistory.push(["user", text]);
-        chatHistory = chatHistory.slice(-MAX_MESSAGES);
         saveHistory(chatHistory);
         input.value = "";
         
-        // Show Typing
         typing.classList.add("book-ai-show");
         scrollToBottom();
 
         try {
             const resp = await fetch(apiUrl, {
                 method: "POST",
-                headers: { 
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    query: text,
-                    user_profile: getUserProfile(),
-                    chat_history: chatHistory
+                    message: text,
+                    user_id: getUserId(),
+                    history: chatHistory,
+                    recent_behaviors: getRecentBehaviors()
                 })
             });
 
             typing.classList.remove("book-ai-show");
 
             if (!resp.ok) {
-                const errText = await resp.text();
-                console.error("[BookAI] Server error:", resp.status, errText);
-                addMessage(`Máy chủ phản hồi lỗi ${resp.status}. Chi tiết: ${errText.slice(0,200)}`, false);
+                addMessage("Hic, Mochi gặp chút lỗi kết nối mạng rồi... 😿 Thử lại tí nha!", false);
                 return;
             }
 
             const data = await resp.json();
-            
             if(data.answer) {
                 addMessage(data.answer, false);
-                if (Array.isArray(data.chat_history)) {
-                    chatHistory = data.chat_history.slice(-MAX_MESSAGES);
-                } else {
-                    chatHistory.push(["assistant", data.answer]);
-                    chatHistory = chatHistory.slice(-MAX_MESSAGES);
-                }
+                chatHistory.push(["assistant", data.answer]);
                 saveHistory(chatHistory);
-            } else if (data.error) {
-                addMessage(`⚠️ Lỗi AI: ${data.error}`, false);
-            } else {
-                addMessage("Oops! Đã có lỗi khi trả về câu trả lời.", false);
             }
         } catch (error) {
-            console.error("[BookAI] Fetch failed:", error);
             typing.classList.remove("book-ai-show");
-            addMessage(`⚠️ Không thể kết nối AI (${error.message}). Hãy kiểm tra recommender-ai-service đang chạy tại ${hostUrl}`, false);
+            addMessage("Mochi không thức dậy được để trả lời bạn... 😿", false);
         }
     };
+
+    sendBtn.addEventListener("click", handleSend);
+    input.addEventListener("keypress", (e) => { if (e.key === "Enter") handleSend(); });
+
+})();
 
     sendBtn.addEventListener("click", handleSend);
     input.addEventListener("keypress", (e) => {

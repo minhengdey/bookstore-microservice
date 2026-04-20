@@ -75,10 +75,10 @@ def _resolve_book_service_url(cli_url: str) -> str:
     bs = os.environ.get("BOOK_SERVICE_URL", "").strip()
     in_docker = os.path.exists("/.dockerenv")
     if in_docker:
-        return (bs or "http://book-service:8000").rstrip("/")
-    if bs and "book-service" not in bs:
+        return (bs or "http://product-service:8000").rstrip("/")
+    if bs and "product-service" not in bs and "book-service" not in bs:
         return bs.rstrip("/")
-    port = os.environ.get("PORT_BOOK", "8002").strip() or "8002"
+    port = os.environ.get("PORT_PRODUCT", "8002").strip() or "8002"
     return f"http://127.0.0.1:{port}"
 
 

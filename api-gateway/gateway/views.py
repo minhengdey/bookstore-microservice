@@ -242,21 +242,28 @@ def register_view(request):
 def home(request):
     user = request.session.get("user", {})
     role = _role(request)
-    # Customer: không gọi API quản lý (customers, orders full) — chỉ hiển thị theo role
+    eid = _entity_id(request)
+    
+    # Common data
+    books_payload = _get(f"{SVC['book']}/books/", request)
+    total_books = _total_count(books_payload)
+    
     if role == "customer":
-        books_payload = _get(f"{SVC['book']}/books/", request)
+        # Get AI recommendations for home page
+        recommendations = _recommendation_books(request, eid, limit=5) if eid else []
         return render(request, "home.html", {
-            "total_books": _total_count(books_payload),
+            "total_books": total_books,
             "total_customers": 0,
             "total_orders": 0,
             "user": user,
             "is_customer": True,
+            "recommendations": recommendations,
         })
-    books_payload = _get(f"{SVC['book']}/books/", request)
+    
     customers_payload = _get(f"{SVC['customer']}/customers/", request)
     orders_payload = _get(f"{SVC['order']}/orders/", request)
     return render(request, "home.html", {
-        "total_books": _total_count(books_payload),
+        "total_books": total_books,
         "total_customers": _total_count(customers_payload),
         "total_orders": _total_count(orders_payload),
         "user": user,

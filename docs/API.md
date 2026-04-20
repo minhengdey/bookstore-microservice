@@ -79,7 +79,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 
 ---
 
-## 5. Book Service `:8002` (Catalog)
+## 5. Product Service `:8002` (Catalog, Category, Author, Publisher)
 
 | Method | Path | Mô tả | Auth |
 |--------|------|--------|------|
@@ -88,13 +88,6 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 | GET | `/books/<pk>/` | Chi tiết sách | — |
 | PUT | `/books/<pk>/` | Cập nhật sách | Staff |
 | DELETE | `/books/<pk>/` | Xóa sách | Staff |
-
----
-
-## 6. Catalog Service `:8006` (Category, Author, Publisher)
-
-| Method | Path | Mô tả | Auth |
-|--------|------|--------|------|
 | GET/POST | `/authors/` | Danh sách / tạo tác giả | — / Staff |
 | GET/PUT/DELETE | `/authors/<pk>/` | Chi tiết / sửa / xóa | Staff |
 | GET/POST | `/categories/` | Danh sách / tạo category | — / Staff |
@@ -106,7 +99,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 
 ---
 
-## 7. Cart Service `:8003` (Ordering)
+## 6. Cart Service `:8003` (Ordering)
 
 | Method | Path | Mô tả | Auth |
 |--------|------|--------|------|
@@ -119,7 +112,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 
 ---
 
-## 8. Order Service `:8007` (Ordering)
+## 7. Order Service `:8007` (Ordering)
 
 | Method | Path | Mô tả | Auth |
 |--------|------|--------|------|
@@ -132,7 +125,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 
 ---
 
-## 9. Pay Service `:8008` (Fulfillment)
+## 8. Pay Service `:8008` (Fulfillment)
 
 | Method | Path | Mô tả | Auth |
 |--------|------|--------|------|
@@ -144,7 +137,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 
 ---
 
-## 10. Ship Service `:8009` (Fulfillment)
+## 9. Ship Service `:8009` (Fulfillment)
 
 | Method | Path | Mô tả | Auth |
 |--------|------|--------|------|
@@ -155,7 +148,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 
 ---
 
-## 11. Comment-Rate Service `:8010` (Review)
+## 10. Comment-Rate Service `:8010` (Review)
 
 | Method | Path | Mô tả | Auth |
 |--------|------|--------|------|
@@ -168,7 +161,7 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 
 ---
 
-## 12. Recommender AI Service `:8011` (Recommendation)
+## 11. Recommender AI Service `:8011` (Recommendation)
 
 | Method | Path | Mô tả | Auth |
 |--------|------|--------|------|
@@ -180,12 +173,12 @@ Các service backend chạy trên port riêng; Gateway proxy request xuống t�
 ## Giao tiếp nội bộ (service → service)
 
 - **customer-service** → **cart-service**: `POST /carts/` (khi đăng ký customer).
-- **cart-service** → **book-service**: `GET /books/<id>/` (validate book_id, lấy giá).
-- **order-service** → **book-service**: `GET /books/<id>/` (lấy giá khi tạo đơn).
+- **cart-service** → **product-service**: `GET /books/<id>/` (validate book_id, lấy giá).
+- **order-service** → **product-service**: `GET /books/<id>/` (lấy giá khi tạo đơn).
 - **order-service** → **pay-service**: `POST /payments/`.
 - **order-service** → **ship-service**: `POST /shippings/`.
 - **order-service** → **comment-rate-service**: `GET /reviews/` (nếu dùng khi tạo đơn).
-- **recommender-ai-service** → **book-service**: `GET /books/`; → **order-service**: `GET /orders/`.
+- **recommender-ai-service** → **product-service**: `GET /books/`; → **order-service**: `GET /orders/`.
 
 ---
 

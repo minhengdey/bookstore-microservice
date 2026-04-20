@@ -4,7 +4,7 @@ from app.repositories import OrderRepository, DiscountRepository
 
 logger = logging.getLogger(__name__)
 
-BOOK_SERVICE_URL = "http://book-service:8000"
+BOOK_SERVICE_URL = "http://product-service:8000"
 PAY_SERVICE_URL = "http://pay-service:8000"
 SHIP_SERVICE_URL = "http://ship-service:8000"
 

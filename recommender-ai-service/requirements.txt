@@ -5,16 +5,19 @@ requests>=2.31
 psycopg2-binary>=2.9
 django-cors-headers>=4.0.0
 
-# AI Tools
-torch>=2.1.0
+# AI Tools (Optimized for CPU-only to build faster)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.1.0+cpu
 numpy>=1.24.0
 sentence-transformers>=2.6.0
 faiss-cpu>=1.7.4
 anthropic>=0.28.0
-openai>=1.30.0          # Dùng cho cả OpenAI và Groq (OpenAI-compatible SDK)
+openai>=1.30.0
 tqdm>=4.66.0
 scipy>=1.10.0
 scikit-learn>=1.3.0
+networkx>=3.0
+pandas>=2.0.0
 
-# Optional — Groq free LLM (set GROQ_API_KEY trong .env để dùng)
-# groq>=0.9.0           # Uncomment nếu muốn dùng Groq SDK native
+# LLM SDKs
+groq>=0.9.0

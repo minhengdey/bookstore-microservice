@@ -1,0 +1,16 @@
+Best Model: RNN
+
+                  precision    recall  f1-score   support
+
+     add_to_cart       0.27      0.36      0.31       990
+           click       0.33      0.53      0.41      1225
+        purchase       0.38      0.54      0.45       708
+remove_from_cart       0.00      0.00      0.00       336
+          review       0.00      0.00      0.00       389
+          search       0.33      0.24      0.28      1447
+            view       0.41      0.49      0.45      1919
+        wishlist       0.00      0.00      0.00       596
+
+        accuracy                           0.35      7610
+       macro avg       0.22      0.27      0.24      7610
+    weighted avg       0.29      0.35      0.31      7610

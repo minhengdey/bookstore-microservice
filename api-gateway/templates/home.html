@@ -38,4 +38,36 @@
         {% endif %}
     </div>
 </div>
+
+{% if is_customer %}
+<div class="card" style="background: linear-gradient(135deg, #fff5f7 0%, #fff 100%);">
+    <h2 style="color: var(--primary); display: flex; align-items: center; gap: 10px;">
+        💖 Gợi ý dành riêng cho bạn
+    </h2>
+    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 20px;">
+        Dựa trên sở thích của bạn, AI của chúng mình đã chọn ra những quyển sách này đấy!
+    </p>
+
+    {% if recommendations %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
+        {% for item in recommendations %}
+        <div class="card" style="padding: 16px; margin-bottom: 0; transition: transform 0.3s; border-color: var(--border);">
+            <div style="font-size: 2.5rem; margin-bottom: 12px; text-align: center;">📖</div>
+            <h4 style="font-size: 1rem; margin-bottom: 8px; color: var(--text-primary); height: 3rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                {{ item.name|default:item.title }}
+            </h4>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <span style="font-weight: 700; color: var(--primary); font-size: 1.1rem;">{{ item.price|default:item.sale_price }}₫</span>
+                <a href="/books/{{ item.id }}/" class="btn btn-primary btn-sm" style="border-radius: 20px;">Xem nha</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+        <p>Hệ thống AI đang tìm hiểu sở thích của bạn... Hãy xem thêm nhiều sách hơn để mình có thể gợi ý chính xác nhé! ✨</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 {% endblock %}

@@ -9,31 +9,33 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-page: #f8fafc;
+            --bg-page: #fff9fb; /* Soft pinkish white */
             --bg-card: #ffffff;
-            --bg-header: #0f172a;
-            --bg-header-hover: #1e293b;
-            --text-primary: #0f172a;
-            --text-secondary: #64748b;
-            --text-muted: #94a3b8;
-            --border: #e2e8f0;
-            --primary: #0d9488;
-            --primary-hover: #0f766e;
-            --primary-light: #ccfbf1;
-            --success: #059669;
-            --success-hover: #047857;
-            --danger: #dc2626;
-            --danger-hover: #b91c1c;
-            --warning: #d97706;
-            --radius: 12px;
-            --radius-sm: 8px;
-            --shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
-            --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+            --bg-header: #ff8fab; /* Cute Pink */
+            --bg-header-hover: #ffb3c1;
+            --text-primary: #5c3d46; /* Soft brown/burgundy */
+            --text-secondary: #8e737b;
+            --text-muted: #bda6ad;
+            --border: #ffe5ec;
+            --primary: #fb6f92; /* Vibrant Pink */
+            --primary-hover: #ff8fab;
+            --primary-light: #ffebf0;
+            --success: #7bf1a8; /* Mint Green */
+            --success-hover: #95f9bc;
+            --danger: #ff4d6d;
+            --danger-hover: #ff758f;
+            --warning: #ffb703;
+            --radius: 24px; /* Super rounded */
+            --radius-sm: 12px;
+            --shadow: 0 4px 12px rgba(251, 111, 146, 0.08);
+            --shadow-md: 0 8px 24px rgba(251, 111, 146, 0.12);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
             background: var(--bg-page);
+            background-image: radial-gradient(#ffe5ec 1px, transparent 1px);
+            background-size: 20px 20px;
             color: var(--text-primary);
             line-height: 1.5;
             min-height: 100vh;
@@ -50,14 +52,15 @@
             box-shadow: var(--shadow-md);
         }
         header h1 {
-            font-size: 1.35rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
             display: flex;
             align-items: center;
             gap: 8px;
+            color: #fff;
         }
-        header h1 span { opacity: 0.95; }
+        header h1 span { font-size: 1.8rem; }
         header nav {
             display: flex;
             align-items: center;
@@ -84,34 +87,40 @@
         }
         .user-badge {
             font-size: 0.85rem;
-            color: var(--text-muted);
+            color: #fff;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 14px;
+            border-radius: 30px;
             display: flex;
             align-items: center;
             gap: 8px;
+            font-weight: 600;
         }
         .role-pill {
-            background: var(--primary);
-            color: #fff;
-            padding: 4px 10px;
+            background: #fff;
+            color: var(--primary);
+            padding: 2px 8px;
             border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
         }
-        .btn-logout { color: #f87171; font-size: 0.85rem; text-decoration: none; font-weight: 500; }
-        .btn-logout:hover { text-decoration: underline; }
-        .btn-login { color: var(--text-muted); font-size: 0.9rem; text-decoration: none; font-weight: 500; }
-        .btn-login:hover { color: #fff; }
+        .btn-logout { color: #fff; font-size: 0.85rem; text-decoration: none; font-weight: 600; opacity: 0.9; }
+        .btn-logout:hover { opacity: 1; text-decoration: underline; }
+        .btn-login { color: #fff; font-size: 0.9rem; text-decoration: none; font-weight: 600; }
+        .btn-login:hover { text-decoration: underline; }
         .btn-register {
-            background: var(--primary);
-            color: #fff;
-            padding: 8px 18px;
-            border-radius: var(--radius-sm);
+            background: #fff;
+            color: var(--primary);
+            padding: 8px 20px;
+            border-radius: 30px;
             font-size: 0.9rem;
-            font-weight: 600;
+            font-weight: 700;
             text-decoration: none;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
         }
-        .btn-register:hover { background: var(--primary-hover); }
+        .btn-register:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.15); }
         .container { max-width: 1120px; margin: 32px auto; padding: 0 20px; }
         .card {
             background: var(--bg-card);
@@ -208,16 +217,17 @@
         }
         .badge {
             display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
+            padding: 6px 12px;
+            border-radius: 30px;
             font-size: 0.75rem;
-            font-weight: 600;
+            font-weight: 700;
             background: var(--primary-light);
-            color: var(--primary-hover);
+            color: var(--primary);
+            border: 1px solid var(--border);
         }
-        .badge-success { background: #d1fae5; color: #065f46; }
-        .badge-warning { background: #fef3c7; color: #92400e; }
-        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-success { background: #e8fff0; color: #2ecc71; border-color: #d1fae5; }
+        .badge-warning { background: #fff9e6; color: #f39c12; border-color: #fef3c7; }
+        .badge-danger { background: #fff0f0; color: #e74c3c; border-color: #fee2e2; }
         .empty {
             color: var(--text-muted);
             font-size: 0.95rem;

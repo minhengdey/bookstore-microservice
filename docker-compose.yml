@@ -38,30 +38,14 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # ── Catalog / Book services ───────────────────────────────────────────────
-  catalog-service:
-    build: ./catalog-service
+  # ── Product service (Consolidated Catalog & Book) ────────────────────────
+  product-service:
+    build: ./product-service
     ports:
-      - "${PORT_CATALOG:-8006}:8000"
+      - "${PORT_PRODUCT:-8002}:8000"
     environment:
-      - SECRET_KEY=${SECRET_KEY_CATALOG:-catalog-service-dev-key}
-      - DB_NAME=${DB_NAME_CATALOG:-catalog_db}
-      - DB_USER=${POSTGRES_USER:-postgres}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
-      - DB_PORT=${DB_PORT:-5432}
-    networks:
-      - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-  book-service:
-    build: ./book-service
-    ports:
-      - "${PORT_BOOK:-8002}:8000"
-    environment:
-      - SECRET_KEY=${SECRET_KEY_BOOK:-book-service-dev-key}
-      - DB_NAME=${DB_NAME_BOOK:-book_db}
+      - SECRET_KEY=${SECRET_KEY_PRODUCT:-product-service-dev-key}
+      - DB_NAME=${DB_NAME_PRODUCT:-product_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=${DB_HOST:-host.docker.internal}
@@ -183,18 +167,35 @@ services:
       - DB_HOST=${DB_HOST:-host.docker.internal}
       - DB_PORT=${DB_PORT:-5432}
       - ORDER_SERVICE_URL=http://order-service:8000
-      - BOOK_SERVICE_URL=http://book-service:8000
+      - BOOK_SERVICE_URL=http://product-service:8000
       - IMPLICIT_CF_DATA_DIR=/app/data/implicit_cf
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-fast}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Neo4j Config
+      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password123}
     volumes:
       - ./recommender-ai-service/data:/app/data
+      - ./recommender-ai-service/app/services/ai_engine/kb:/app/app/services/ai_engine/kb
     networks:
       - bookstore-net
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474" # HTTP
+      - "7687:7687" # Bolt
+    environment:
+      - NEO4J_AUTH=neo4j/password123
+    volumes:
+      - ./neo4j_data:/data
+    networks:
+      - bookstore-net
 
   # ── API Gateway ───────────────────────────────────────────────────────────
   api-gateway:
@@ -205,8 +206,8 @@ services:
       - SECRET_KEY=${SECRET_KEY_GATEWAY:-api-gateway-dev-key}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
       - CUSTOMER_SERVICE_URL=${CUSTOMER_SERVICE_URL:-http://customer-service:8000}
-      - BOOK_SERVICE_URL=${BOOK_SERVICE_URL:-http://book-service:8000}
-      - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://catalog-service:8000}
+      - BOOK_SERVICE_URL=${BOOK_SERVICE_URL:-http://product-service:8000}
+      - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://product-service:8000}
       - CART_SERVICE_URL=${CART_SERVICE_URL:-http://cart-service:8000}
       - ORDER_SERVICE_URL=${ORDER_SERVICE_URL:-http://order-service:8000}
       - PAY_SERVICE_URL=${PAY_SERVICE_URL:-http://pay-service:8000}

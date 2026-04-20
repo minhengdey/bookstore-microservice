@@ -7,8 +7,7 @@ param([switch]$Clear)
 $ErrorActionPreference = "Stop"
 $services = @(
     "customer-service",
-    "catalog-service",
-    "book-service",
+    "product-service",
     "staff-service",
     "cart-service",
     "order-service",

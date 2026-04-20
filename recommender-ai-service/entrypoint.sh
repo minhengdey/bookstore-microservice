@@ -20,9 +20,6 @@ do
 done
 echo "[entrypoint] PostgreSQL is ready!"
 
-echo "[entrypoint] Initializing bookstore Knowledge Base and FAISS index..."
-python app/services/ai_engine/main.py --kb-only --rebuild-kb
-
 python manage.py makemigrations app --no-input
 python manage.py migrate --no-input
 

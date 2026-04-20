@@ -1,80 +1,81 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="page-title">📘 Chi tiết sách</h1>
+<h1 class="page-title">📖 Thông tin sách nè</h1>
 
-<div class="card">
+<div class="card" style="border-top: 8px solid var(--primary);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
         <div>
-            <h2 style="margin-bottom:8px;">{{ book.title }}</h2>
-            <p style="color:var(--text-secondary);margin-bottom:0;">ISBN: {{ book.isbn|default:"—" }}</p>
+            <h2 style="margin-bottom:8px; color: var(--text-primary); font-size: 1.8rem;">📘 {{ book.title }}</h2>
+            <p style="color:var(--text-secondary);margin-bottom:0; font-weight: 500;">
+                Mã định danh: <code style="background: var(--primary-light); padding: 2px 8px; border-radius: 4px; color: var(--primary);">{{ book.isbn|default:"—" }}</code>
+            </p>
         </div>
-        <span class="badge {% if book.status == 'active' %}badge-success{% else %}badge-warning{% endif %}">{{ book.status }}</span>
+        <span class="badge {% if book.status == 'active' %}badge-success{% else %}badge-warning{% endif %}" style="padding: 8px 16px; font-size: 0.85rem;">{{ book.status }}</span>
     </div>
 
-    <div class="form-grid" style="margin-top:18px;">
-        <div><strong>Giá bán:</strong> {{ book.sale_price }}₫</div>
-        <div><strong>Giá gốc:</strong> {{ book.list_price }}₫</div>
-        <div><strong>Tồn kho:</strong> {{ book.stock }}</div>
-        <div><strong>Năm xuất bản:</strong> {{ book.publication_year|default:"—" }}</div>
-        <div><strong>Số trang:</strong> {{ book.page_count|default:"—" }}</div>
+    <div class="form-grid" style="margin-top:24px; padding: 20px; background: #fffcfd; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+        <div><strong style="color: var(--text-secondary);">🏷️ Giá bán:</strong> <span style="color: var(--primary); font-weight: 800; font-size: 1.2rem;">{{ book.sale_price }}₫</span></div>
+        <div><strong style="color: var(--text-secondary);">💰 Giá gốc:</strong> <span style="text-decoration: line-through; opacity: 0.6;">{{ book.list_price }}₫</span></div>
+        <div><strong style="color: var(--text-secondary);">📦 Tồn kho:</strong> <span style="font-weight: 600;">{{ book.stock }}</span> quyển</div>
+        <div><strong style="color: var(--text-secondary);">📅 Năm XB:</strong> {{ book.publication_year|default:"—" }}</div>
+        <div><strong style="color: var(--text-secondary);">📄 Số trang:</strong> {{ book.page_count|default:"—" }} trang</div>
     </div>
 
-    <div style="margin-top:20px;">
-        <h3 style="margin-bottom:8px;">Mô tả</h3>
-        <p style="color:var(--text-secondary);">{{ book.description|default:"Chưa có mô tả." }}</p>
+    <div style="margin-top:24px;">
+        <h3 style="margin-bottom:12px; color: var(--primary); display: flex; align-items: center; gap: 8px;">✨ Tóm tắt nội dung</h3>
+        <p style="color:var(--text-secondary); line-height: 1.8; background: #fff; padding: 15px; border-radius: var(--radius-sm); border: 1px solid var(--border); border-style: dashed;">
+            {{ book.description|default:"Hic, hiện tại mình chưa có tóm tắt cho quyển này... Bạn hãy tự mình khám phá nha! 💖" }}
+        </p>
     </div>
 
-    <div class="form-grid" style="margin-top:18px;">
-        <div><strong>Tác giả:</strong> {{ book_catalog.authors|join:", "|default:"—" }}</div>
-        <div><strong>Thể loại:</strong> {{ book_catalog.genres|join:", "|default:"—" }}</div>
-        <div><strong>Danh mục:</strong> {{ book_catalog.categories|join:", "|default:"—" }}</div>
-        <div><strong>Nhà xuất bản:</strong> {{ book_catalog.publishers|join:", "|default:"—" }}</div>
+    <div class="form-grid" style="margin-top:24px;">
+        <div><strong>✍️ Tác giả:</strong> <span class="badge" style="background: white;">{{ book_catalog.authors|join:", "|default:"—" }}</span></div>
+        <div><strong>🧩 Thể loại:</strong> <span class="badge" style="background: white;">{{ book_catalog.genres|join:", "|default:"—" }}</span></div>
+        <div><strong>📚 Danh mục:</strong> <span class="badge" style="background: white;">{{ book_catalog.categories|join:", "|default:"—" }}</span></div>
+        <div><strong>🏢 Nhà XB:</strong> <span class="badge" style="background: white;">{{ book_catalog.publishers|join:", "|default:"—" }}</span></div>
     </div>
 
-    <div class="page-actions">
-        <a href="/books/" class="btn btn-secondary">← Quay lại danh sách</a>
+    <div class="page-actions" style="margin-top: 30px; border-top: 1px solid var(--border); padding-top: 20px;">
+        <a href="/books/" class="btn btn-secondary" style="border-radius: 30px;">← Quay lại thư viện</a>
         {% if is_customer and customer_id %}
-        <form method="POST" style="display:flex;gap:10px;align-items:center;">
+        <form method="POST" style="display:flex;gap:15px;align-items:center; background: var(--primary-light); padding: 12px 20px; border-radius: 40px;">
             {% csrf_token %}
-            <input type="number" name="quantity" value="1" min="1" style="max-width:100px" required>
-            <button type="submit" class="btn btn-success">Thêm vào giỏ hàng</button>
+            <span style="font-weight: 700; color: var(--primary);">Số lượng:</span>
+            <input type="number" name="quantity" value="1" min="1" style="max-width:80px; text-align: center; border-radius: 20px; border: 1px solid var(--primary);" required>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 25px; border-radius: 30px; box-shadow: 0 4px 10px rgba(251, 111, 146, 0.3);">
+                🛒 Cho vào giỏ ngay!
+            </button>
         </form>
         {% endif %}
     </div>
 
     {% if error %}
-    <div class="alert-error" style="margin-top:12px;">{{ error }}</div>
+    <div class="alert-error" style="margin-top:20px; border-radius: var(--radius-sm);">{{ error }} 😿</div>
     {% endif %}
 </div>
 
 {% if is_customer %}
-<div class="card">
-    <h2>✨ Gợi ý dành cho bạn</h2>
+<div class="card" style="background: linear-gradient(to right, #fff9fb, #ffffff);">
+    <h2 style="color: var(--primary); display: flex; align-items: center; gap: 8px;">🌈 Có thể bạn cũng thích</h2>
+    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 20px;">AI của chúng mình nghĩ là những quyển này cũng rất hợp với bạn đó!</p>
+    
     {% if recommendations %}
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Tên sách</th>
-                    <th>Giá</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for item in recommendations %}
-            <tr>
-                <td><span class="badge">{{ item.id }}</span></td>
-                <td>{{ item.title }}</td>
-                <td>{{ item.sale_price }}₫</td>
-                <td><a href="/books/{{ item.id }}/" class="btn btn-primary btn-sm">Xem chi tiết</a></td>
-            </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px;">
+        {% for item in recommendations %}
+        <div class="card" style="padding: 12px; margin-bottom: 0; border-color: var(--border); transition: transform 0.2s;">
+            <div style="font-size: 2rem; text-align: center; margin-bottom: 10px;">📙</div>
+            <h4 style="font-size: 0.9rem; margin-bottom: 8px; height: 2.4rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">{{ item.title }}</h4>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 700; color: var(--primary); font-size: 0.95rem;">{{ item.sale_price }}₫</span>
+                <a href="/books/{{ item.id }}/" class="btn btn-primary btn-sm" style="border-radius: 15px; font-size: 0.75rem;">Chi tiết</a>
+            </div>
+        </div>
+        {% endfor %}
     </div>
     {% else %}
-    <p class="empty">Chưa đủ dữ liệu để gợi ý. Hãy xem thêm và thêm sách vào giỏ để hệ thống học sở thích của bạn.</p>
+    <div class="empty" style="border-radius: var(--radius-sm);">
+        <p>Hệ thống AI đang học hỏi sở thích của bạn... Hãy xem thêm nhiều sách hơn nhé! ✨</p>
+    </div>
     {% endif %}
 </div>
 {% endif %}
