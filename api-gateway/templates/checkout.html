@@ -12,7 +12,7 @@
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>Sách</th>
+                    <th>Sản phẩm</th>
                     <th>Số lượng</th>
                     <th>Đơn giá</th>
                     <th>Thành tiền</th>
@@ -22,7 +22,7 @@
             {% for item in cart_items %}
             <tr>
                 <td><span class="badge">{{ item.id }}</span></td>
-                <td>Book #{{ item.book_id }}</td>
+                <td>Sản phẩm #{{ item.product_id }}</td>
                 <td>{{ item.quantity }}</td>
                 <td>{{ item.unit_price }}₫</td>
                 <td>{{ item.quantity }} × {{ item.unit_price }}₫</td>

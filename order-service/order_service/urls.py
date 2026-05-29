@@ -1,2 +1,4 @@
 from django.urls import path, include
-urlpatterns = [path("", include("app.urls"))]
+urlpatterns = [
+    path("", include("order.urls")),
+]

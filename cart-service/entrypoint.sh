@@ -19,6 +19,10 @@ do
     sleep 2
 done
 echo "[entrypoint] PostgreSQL is ready!"
-python manage.py makemigrations app --no-input
+echo "[entrypoint] Installing common package..."
+if [ -d /app/common ]; then
+    pip install -q -e /app/common || true
+fi
+python manage.py makemigrations cart --no-input
 python manage.py migrate --no-input
 exec python manage.py runserver 0.0.0.0:8000

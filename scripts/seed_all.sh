@@ -7,7 +7,7 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-SERVICES="customer-service catalog-service book-service staff-service cart-service order-service pay-service ship-service manager-service comment-rate-service recommender-ai-service"
+SERVICES="auth-service user-service product-service cart-service order-service payment-service shipping-service recommender-ai-service"
 
 echo "=== Seed mock data (root: $ROOT) ==="
 

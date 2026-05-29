@@ -1,42 +1,93 @@
 services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./scripts/init_databases.sql:/docker-entrypoint-initdb.d/init_databases.sql
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bookstore-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  # NOTE: Không dùng PostgreSQL container — kết nối tới PostgreSQL cài trên máy host.
-  # Chạy scripts/init_databases.sql trong DBeaver/psql trước khi docker compose up.
+  auth-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME_AUTH:-auth_db}
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    networks:
+      - bookstore-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 
   # ── Identity / User services ──────────────────────────────────────────────
-  customer-service:
-    build: ./customer-service
+  auth-service:
+    build: ./auth-service
     ports:
-      - "${PORT_CUSTOMER:-8001}:8000"
+      - "${PORT_AUTH:-8012}:8000"
     environment:
-      - SECRET_KEY=${SECRET_KEY_CUSTOMER:-customer-service-dev-key}
-      - DB_NAME=${DB_NAME_CUSTOMER:-customer_db}
+      - SECRET_KEY=${SECRET_KEY_AUTH:-auth-service-dev-key}
+      - DB_NAME=${DB_NAME_AUTH:-auth_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
-      - DB_PORT=${DB_PORT:-5432}
+      - DB_HOST=auth-db
+      - DB_PORT=${DB_PORT_AUTH:-5432}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
+      - USER_SERVICE_URL=${USER_SERVICE_URL:-http://user-service:8000}
+      - AUTH_SERVICE_TIMEOUT=${AUTH_SERVICE_TIMEOUT:-5}
+      - AUTH_CIRCUIT_FAIL_THRESHOLD=${AUTH_CIRCUIT_FAIL_THRESHOLD:-5}
+      - AUTH_CIRCUIT_RESET_SECONDS=${AUTH_CIRCUIT_RESET_SECONDS:-30}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-internal-dev-token}
+      - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
+      - INTERNAL_ALLOWED_SERVICES=${INTERNAL_ALLOWED_SERVICES:-auth-service}
+      - INTERNAL_SIGNATURE_TOLERANCE=${INTERNAL_SIGNATURE_TOLERANCE:-30}
+    depends_on:
+      auth-db:
+        condition: service_healthy
     networks:
       - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live/').read()\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-  staff-service:
-    build: ./staff-service
+  user-service:
+    build: ./user-service
     ports:
-      - "${PORT_STAFF:-8004}:8000"
+      - "${PORT_USER:-8001}:8000"
     environment:
-      - SECRET_KEY=${SECRET_KEY_STAFF:-staff-service-dev-key}
-      - DB_NAME=${DB_NAME_STAFF:-staff_db}
+      - SECRET_KEY=${SECRET_KEY_USER:-user-service-dev-key}
+      - DB_NAME=${DB_NAME_USER:-user_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT:-5432}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-internal-dev-token}
+      - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
+      - INTERNAL_ALLOWED_SERVICES=${INTERNAL_ALLOWED_SERVICES:-auth-service}
+      - INTERNAL_SIGNATURE_TOLERANCE=${INTERNAL_SIGNATURE_TOLERANCE:-30}
+      - PYTHONPATH=/app/common
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
     networks:
       - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   # ── Product service (Consolidated Catalog & Book) ────────────────────────
   product-service:
@@ -48,13 +99,49 @@ services:
       - DB_NAME=${DB_NAME_PRODUCT:-product_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
     networks:
       - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
+  # ── Message Broker (Event-Driven Architecture) ────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bookstore-net
+
+  # ── Distributed Tracing (Jaeger) ──────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - bookstore-net
+
+  # ── Redis Cache ───────────────────────────────────────────────────────────
   # ── Shopping services ─────────────────────────────────────────────────────
   cart-service:
     build: ./cart-service
@@ -65,12 +152,16 @@ services:
       - DB_NAME=${DB_NAME_CART:-cart_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
     networks:
       - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   order-service:
     build: ./order-service
@@ -81,16 +172,19 @@ services:
       - DB_NAME=${DB_NAME_ORDER:-order_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
     networks:
       - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
   # ── Payment / Shipping services ───────────────────────────────────────────
-  pay-service:
-    build: ./pay-service
+  payment-service:
+    build: ./payment-service
     ports:
       - "${PORT_PAY:-8008}:8000"
     environment:
@@ -98,15 +192,44 @@ services:
       - DB_NAME=${DB_NAME_PAY:-pay_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
     networks:
       - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
-  ship-service:
-    build: ./ship-service
+  payment-worker:
+    build: ./payment-service
+    command:
+      - sh
+      - -c
+      - while true; do python manage.py retry_failed_shipping; sleep 60; done
+    environment:
+      - SECRET_KEY=${SECRET_KEY_PAY:-pay-service-dev-key}
+      - DB_NAME=${DB_NAME_PAY:-pay_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - SHIP_SERVICE_URL=http://shipping-service:8000
+      - PYTHONPATH=/app/common
+    depends_on:
+      db:
+        condition: service_healthy
+      payment-service:
+        condition: service_started
+    volumes:
+      - ./common:/app/common
+    networks:
+      - bookstore-net
+
+  shipping-service:
+    build: ./shipping-service
     ports:
       - "${PORT_SHIP:-8009}:8000"
     environment:
@@ -114,46 +237,18 @@ services:
       - DB_NAME=${DB_NAME_SHIP:-ship_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
     networks:
       - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
-  # ── Inventory management ──────────────────────────────────────────────────
-  manager-service:
-    build: ./manager-service
-    ports:
-      - "${PORT_MANAGER:-8005}:8000"
-    environment:
-      - SECRET_KEY=${SECRET_KEY_MANAGER:-manager-service-dev-key}
-      - DB_NAME=${DB_NAME_MANAGER:-manager_db}
-      - DB_USER=${POSTGRES_USER:-postgres}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
-      - DB_PORT=${DB_PORT:-5432}
-    networks:
-      - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
-  # ── Review / Recommendation ───────────────────────────────────────────────
-  comment-rate-service:
-    build: ./comment-rate-service
-    ports:
-      - "${PORT_COMMENT:-8010}:8000"
-    environment:
-      - SECRET_KEY=${SECRET_KEY_COMMENT:-comment-rate-dev-key}
-      - DB_NAME=${DB_NAME_COMMENT:-comment_rate_db}
-      - DB_USER=${POSTGRES_USER:-postgres}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
-      - DB_PORT=${DB_PORT:-5432}
-    networks:
-      - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   recommender-ai-service:
     build: ./recommender-ai-service
@@ -164,10 +259,10 @@ services:
       - DB_NAME=${DB_NAME_RECOMMENDER:-recommender_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_HOST=db
       - DB_PORT=${DB_PORT:-5432}
       - ORDER_SERVICE_URL=http://order-service:8000
-      - BOOK_SERVICE_URL=http://product-service:8000
+      - PRODUCT_SERVICE_URL=http://product-service:8000
       - IMPLICIT_CF_DATA_DIR=/app/data/implicit_cf
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-fast}
@@ -180,10 +275,13 @@ services:
     volumes:
       - ./recommender-ai-service/data:/app/data
       - ./recommender-ai-service/app/services/ai_engine/kb:/app/app/services/ai_engine/kb
+    depends_on:
+      db:
+        condition: service_healthy
+      neo4j:
+        condition: service_started
     networks:
       - bookstore-net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   neo4j:
     image: neo4j:5-community
@@ -197,28 +295,53 @@ services:
     networks:
       - bookstore-net
 
-  # ── API Gateway ───────────────────────────────────────────────────────────
+  # ── True API Gateway (NGINX) ──────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - user-service
+      - product-service
+      - cart-service
+      - order-service
+      - payment-service
+      - shipping-service
+      - recommender-ai-service
+      - api-gateway
+    networks:
+      - bookstore-net
+
+  # ── Django API Gateway (BFF Layer) ────────────────────────────────────────
   api-gateway:
     build: ./api-gateway
+    # Removed port mapping to host so only NGINX is exposed, keeping 8000 for local dev if needed
     ports:
       - "${PORT_GATEWAY:-8000}:8000"
     environment:
       - SECRET_KEY=${SECRET_KEY_GATEWAY:-api-gateway-dev-key}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
-      - CUSTOMER_SERVICE_URL=${CUSTOMER_SERVICE_URL:-http://customer-service:8000}
-      - BOOK_SERVICE_URL=${BOOK_SERVICE_URL:-http://product-service:8000}
-      - CATALOG_SERVICE_URL=${CATALOG_SERVICE_URL:-http://product-service:8000}
+      - USER_SERVICE_URL=${USER_SERVICE_URL:-http://user-service:8000}
+      - PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL:-http://product-service:8000}
       - CART_SERVICE_URL=${CART_SERVICE_URL:-http://cart-service:8000}
       - ORDER_SERVICE_URL=${ORDER_SERVICE_URL:-http://order-service:8000}
-      - PAY_SERVICE_URL=${PAY_SERVICE_URL:-http://pay-service:8000}
-      - SHIP_SERVICE_URL=${SHIP_SERVICE_URL:-http://ship-service:8000}
-      - COMMENT_RATE_URL=${COMMENT_RATE_URL:-http://comment-rate-service:8000}
+      - PAY_SERVICE_URL=http://payment-service:8000
+      - SHIP_SERVICE_URL=http://shipping-service:8000
       - RECOMMENDER_URL=${RECOMMENDER_URL:-http://recommender-ai-service:8000}
-      - STAFF_SERVICE_URL=${STAFF_SERVICE_URL:-http://staff-service:8000}
-      - MANAGER_SERVICE_URL=${MANAGER_SERVICE_URL:-http://manager-service:8000}
     networks:
       - bookstore-net
 
 networks:
   bookstore-net:
     driver: bridge
+
+volumes:
+  postgres_data:
+  auth_db_data:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  redis_data:

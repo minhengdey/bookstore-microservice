@@ -3,7 +3,7 @@ from django.db import models
 
 class RecommendationLog(models.Model):
     customer_id = models.IntegerField()
-    book_ids = models.JSONField(default=list)     # list of recommended book IDs
+    product_ids = models.JSONField(default=list)     # list of recommended product IDs
     created_at = models.DateTimeField(auto_now_add=True)
     strategy = models.CharField(max_length=100, default="collaborative")
 

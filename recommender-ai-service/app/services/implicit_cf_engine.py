@@ -75,7 +75,7 @@ class ImplicitCFEngine:
     def recommend(
         self,
         customer_id: int,
-        exclude_book_ids: set,
+        exclude_product_ids: set,
         limit: int,
     ) -> list[tuple[int, float]]:
         self.reload()
@@ -99,7 +99,7 @@ class ImplicitCFEngine:
             if j in liked:
                 scores[j] = -np.inf
                 continue
-            if self._local_id_for_col(j) in exclude_book_ids:
+            if self._local_id_for_col(j) in exclude_product_ids:
                 scores[j] = -np.inf
 
         order = np.argsort(-scores)
@@ -108,7 +108,7 @@ class ImplicitCFEngine:
             if not np.isfinite(scores[j]):
                 continue
             local_bid = self._local_id_for_col(int(j))
-            if local_bid in exclude_book_ids:
+            if local_bid in exclude_product_ids:
                 continue
             out.append((local_bid, float(scores[j])))
             if len(out) >= limit:

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 class="page-title">Sản phẩm</h2>
+    {% if can_manage_products %}
+    <div style="display: flex; gap: 10px;">
+        <button onclick="document.getElementById('add-form').style.display='block'" class="btn btn-success">Thêm sản phẩm</button>
+    </div>
+    {% endif %}
+</div>
+
+{% if error %}
+<div class="alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card" style="margin-bottom: 24px;">
+    <form method="GET" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+        <div style="flex: 1; min-width: 200px;">
+            <label for="search">Tìm kiếm sản phẩm</label>
+            <input type="text" id="search" name="search" value="{{ search_query }}" placeholder="Nhập tên sản phẩm...">
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+            <label for="category_id">Danh mục</label>
+            <select id="category_id" name="category_id">
+                <option value="">Tất cả danh mục</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}" {% if cat.id|stringformat:"s" == category_id %}selected{% endif %}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button type="submit" class="btn btn-primary" style="margin-bottom: 0;">Lọc</button>
+            <a href="/products/" class="btn btn-secondary" style="margin-bottom: 0;">Xóa lọc</a>
+        </div>
+    </form>
+</div>
+
+{% if can_manage_products %}
+<div id="add-form" class="card" style="display:none;">
+    <h2>Thêm sản phẩm mới</h2>
+    <form method="POST">
+        {% csrf_token %}
+        <div class="form-grid">
+            <div>
+                <label>Tên sản phẩm</label>
+                <input type="text" name="name" required>
+            </div>
+            <div>
+                <label>SKU</label>
+                <input type="text" name="sku">
+            </div>
+            <div>
+                <label>Giá (VND)</label>
+                <input type="number" name="price" required>
+            </div>
+            <div>
+                <label>Danh mục ID</label>
+                <input type="number" name="category_id" required>
+            </div>
+            <div class="full">
+                <button type="submit" class="btn btn-primary">Lưu sản phẩm</button>
+                <button type="button" onclick="document.getElementById('add-form').style.display='none'" class="btn btn-secondary">Hủy</button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tên sản phẩm</th>
+                    <th>Giá</th>
+                    <th>Danh mục</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in products %}
+                <tr>
+                    <td>{{ p.id }}</td>
+                    <td><a href="/products/{{ p.id }}/" style="font-weight: 600; color: var(--primary);">{{ p.name }}</a></td>
+                    <td>{{ p.price }}₫</td>
+                    <td>{{ p.category_name|default:"Chưa phân loại" }}</td>
+                    <td>
+                        <a href="/products/{{ p.id }}/" class="btn btn-secondary btn-sm">Xem</a>
+                        {% if can_manage_products %}
+                        <form method="POST" action="/products/{{ p.id }}/delete/" style="display:inline;" onsubmit="return confirm('Xóa sản phẩm này?')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if products_pagination %}
+    <div style="margin-top: 20px; display: flex; justify-content: center; gap: 8px;">
+        {% if products_pagination.prev_page %}
+        <a href="{{ products_pagination.query_for_prev }}" class="btn btn-secondary btn-sm">Trang trước</a>
+        {% endif %}
+        <span style="padding: 6px 12px; font-size: 0.9rem;">Trang {{ products_pagination.page }} / {{ products_pagination.total_pages }}</span>
+        {% if products_pagination.next_page %}
+        <a href="{{ products_pagination.query_for_next }}" class="btn btn-secondary btn-sm">Trang sau</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

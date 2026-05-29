@@ -20,6 +20,11 @@ do
 done
 echo "[entrypoint] PostgreSQL is ready!"
 
+echo "[entrypoint] Installing common package..."
+if [ -d /app/common ]; then
+    pip install -q -e /app/common || true
+fi
+
 python manage.py makemigrations app --no-input
 python manage.py migrate --no-input
 

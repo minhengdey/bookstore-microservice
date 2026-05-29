@@ -78,9 +78,28 @@ REST_FRAMEWORK = {
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
+# Behavior prediction model artifacts
+RECOMMENDER_MODEL_PATH = Path(
+    os.environ.get("RECOMMENDER_MODEL_PATH", str(BASE_DIR / "models" / "model_best.keras"))
+)
+RECOMMENDER_ENCODER_PATH = Path(
+    os.environ.get("RECOMMENDER_ENCODER_PATH", str(BASE_DIR / "models" / "encoders.pkl"))
+)
+PRODUCT_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL", "http://product-service:8000")
+
 # Implicit ALS (train: python manage.py train_implicit_cf --ratings ...)
 IMPLICIT_CF_DATA_DIR = Path(
     os.environ.get("IMPLICIT_CF_DATA_DIR", str(BASE_DIR / "data" / "implicit_cf"))
 )
 # Độ mạnh điểm ALS khi trộn với co-buy + behavior (càng lớn càng ưu tiên ALS)
 IMPLICIT_CF_ALS_WEIGHT = float(os.environ.get("IMPLICIT_CF_ALS_WEIGHT", "4.0"))
+
+# Proxy / secure settings (environment-driven; safe defaults for local/dev)
+USE_X_FORWARDED_HOST = os.environ.get("USE_X_FORWARDED_HOST", "True").lower() == "true"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "False").lower() == "true"
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "False").lower() == "true"
+CSRF_TRUSTED_ORIGINS = (
+    os.environ.get("CSRF_TRUSTED_ORIGINS", "").split() if os.environ.get("CSRF_TRUSTED_ORIGINS") else []
+)

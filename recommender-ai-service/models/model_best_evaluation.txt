@@ -1,16 +1,31 @@
-Best Model: RNN
+=================================================================
+  DANH GIA VA LY DO CHON MODEL_BEST (v5)
+=================================================================
 
-                  precision    recall  f1-score   support
+Ket qua 3 mo hinh:
+  Model        Accuracy   F1-macro  F1-weighted  Epochs
+  --------------------------------------------------------
+  GRU            0.6274     0.6018       0.6203      45
+  LSTM           0.6930     0.6826       0.6927      45
+  BiLSTM         0.7730     0.7598       0.7703      45 <- BEST
 
-     add_to_cart       0.27      0.36      0.31       990
-           click       0.33      0.53      0.41      1225
-        purchase       0.38      0.54      0.45       708
-remove_from_cart       0.00      0.00      0.00       336
-          review       0.00      0.00      0.00       389
-          search       0.33      0.24      0.28      1447
-            view       0.41      0.49      0.45      1919
-        wishlist       0.00      0.00      0.00       596
+Mo hinh duoc chon: BiLSTM
 
-        accuracy                           0.35      7610
-       macro avg       0.22      0.27      0.24      7610
-    weighted avg       0.29      0.35      0.31      7610
+Ly do chon BiLSTM:
+  - Dat composite score cao nhat: acc=77.30%, F1=0.7598.
+  - Vuot LSTM: acc+8.0pp.
+  - Kien truc: BiLSTM(256→128) + MultiHead Attention + Dropout 0.30 chong overfit.
+  - Input LayerNorm: normalize features truoc LSTM giup gradient flow.
+  - Warmup LR (1e-5 → 3e-4 trong 5 epoch) + Cosine decay ve 0.
+  - Features moi: purchase_norm, step_ratio (+2 features = 18 tong).
+  - Label smoothing eps=0.10 + Gradient clipping norm=1.0.
+  - Du doan tot (F1>=0.50): remove_from_cart(0.899), view(0.832), review(0.819), wishlist(0.81), search(0.73).
+  - Hoi tu: 45 epochs, thoi gian: 39602s.
+
+So sanh cai tien v4 → v5:
+----------------------------------------
+  v4: RNN underfitting → v5: GRU (cap cao hon, params tuong duong)
+  v4: LSTM plateau epoch 5 → v5: Warmup + Cosine LR decay ve 0
+  v4: BiLSTM overfit nhe → v5: Dropout 0.30 + SEQ=10 + 2 features moi
+  v4: BatchNorm sau LSTM → v5: LayerNorm TRUOC LSTM (input norm)
+=================================================================

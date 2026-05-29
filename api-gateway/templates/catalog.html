@@ -5,13 +5,13 @@
 
 <div class="card">
     <div class="page-actions" style="margin-top:0;margin-bottom:18px;">
-        <a class="btn {% if active_tab == 'authors' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=authors">Tác giả</a>
-        <a class="btn {% if active_tab == 'genres' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=genres">Genre</a>
-        <a class="btn {% if active_tab == 'publishers' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=publishers">Nhà xuất bản</a>
+        <a class="btn {% if active_tab == 'categories' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=categories">Danh mục</a>
+        <a class="btn {% if active_tab == 'brands' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=brands">Thương hiệu</a>
+        <a class="btn {% if active_tab == 'product_types' %}btn-primary{% else %}btn-secondary{% endif %}" href="?tab=product_types">Loại sản phẩm</a>
     </div>
 
     <h2 style="display:flex;align-items:center;gap:8px;">
-        {% if active_tab == 'authors' %}✒️{% elif active_tab == 'genres' %}🏷️{% else %}🏢{% endif %}
+        {% if active_tab == 'categories' %}🏷️{% elif active_tab == 'brands' %}🏢{% else %}📦{% endif %}
         {{ active_label }}
     </h2>
 
@@ -25,36 +25,36 @@
     {% if items %}
         <div class="table-wrap">
             <table>
-                {% if active_tab == "authors" %}
-                <thead><tr><th>ID</th><th>Tên tác giả</th><th>Năm sinh</th></tr></thead>
+                {% if active_tab == "categories" %}
+                <thead><tr><th>ID</th><th>Tên danh mục</th><th>Mô tả</th></tr></thead>
                 <tbody>
-                {% for a in items %}
+                {% for c in items %}
                 <tr>
-                    <td><span class="badge">{{ a.id }}</span></td>
-                    <td>{{ a.author_name }}</td>
-                    <td>{{ a.birth_year|default:"—" }}</td>
+                    <td><span class="badge">{{ c.id }}</span></td>
+                    <td>{{ c.name }}</td>
+                    <td>{{ c.description|default:"—" }}</td>
                 </tr>
                 {% endfor %}
                 </tbody>
-                {% elif active_tab == "genres" %}
-                <thead><tr><th>ID</th><th>Tên genre</th><th>Mô tả</th></tr></thead>
+                {% elif active_tab == "brands" %}
+                <thead><tr><th>ID</th><th>Tên thương hiệu</th><th>Quốc gia</th></tr></thead>
                 <tbody>
-                {% for g in items %}
+                {% for b in items %}
                 <tr>
-                    <td><span class="badge">{{ g.id }}</span></td>
-                    <td>{{ g.genre_name }}</td>
-                    <td>{{ g.description|default:"—" }}</td>
+                    <td><span class="badge">{{ b.id }}</span></td>
+                    <td>{{ b.name }}</td>
+                    <td>{{ b.country|default:"—" }}</td>
                 </tr>
                 {% endfor %}
                 </tbody>
                 {% else %}
-                <thead><tr><th>ID</th><th>Nhà xuất bản</th><th>Điện thoại</th></tr></thead>
+                <thead><tr><th>ID</th><th>Loại sản phẩm</th><th>Đặc trưng</th></tr></thead>
                 <tbody>
-                {% for p in items %}
+                {% for t in items %}
                 <tr>
-                    <td><span class="badge">{{ p.id }}</span></td>
-                    <td>{{ p.publisher_name }}</td>
-                    <td>{{ p.phone|default:"—" }}</td>
+                    <td><span class="badge">{{ t.id }}</span></td>
+                    <td>{{ t.name }}</td>
+                    <td>{{ t.key_features|default:"—" }}</td>
                 </tr>
                 {% endfor %}
                 </tbody>

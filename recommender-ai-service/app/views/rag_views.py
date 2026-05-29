@@ -27,7 +27,7 @@ class KTMPChatConsultingView(APIView):
     def post(self, request):
         data    = request.data
         message = data.get("message", "")
-        user_id = data.get("user_id", "U001")
+        user_id = data.get("user_id", "anonymous")
         history = data.get("history", [])
         recent_behaviors = data.get("recent_behaviors", [])
 

@@ -3,11 +3,16 @@ from django.conf import settings
 import requests, logging
 import time
 from urllib.parse import urlencode
+from collections import defaultdict
 
 from .permissions import _role, _entity_id, require_roles, require_customer_or_staff, customer_can_only_own
 
 logger = logging.getLogger(__name__)
 SVC = settings.SERVICE_URLS
+
+# Simple request cache
+_req_cache = {}
+_req_cache_ttl = {}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -41,12 +46,15 @@ def _list_query_params(request):
     page = request.GET.get("page")
     page_size = request.GET.get("page_size")
     search = request.GET.get("search")
+    category_id = request.GET.get("category_id")
     if page:
         params["page"] = page
     if page_size:
         params["page_size"] = page_size
     if search:
         params["search"] = search
+    if category_id:
+        params["category_id"] = category_id
     return params
 
 
@@ -99,13 +107,33 @@ def _auth_headers(request) -> dict:
     }
 
 
-def _get(url, request=None, **kwargs):
+def _get(url, request=None, cache_ttl=0, **kwargs):
+    """GET with optional caching. cache_ttl in seconds (0=no cache)."""
+    # Check cache
+    now = time.time()
+    if cache_ttl > 0 and url in _req_cache:
+        if now < _req_cache_ttl.get(url, 0):
+            logger.debug(f"[CACHE HIT] {url}")
+            return _req_cache[url]
+    
     try:
         headers = _auth_headers(request) if request else {}
-        r = requests.get(url, headers=headers, timeout=5, **kwargs)
-        return r.json() if r.status_code == 200 else []
+        r = requests.get(url, headers=headers, timeout=60, **kwargs)
+        result = r.json() if r.status_code == 200 else []
+        
+        # Cache if requested
+        if cache_ttl > 0:
+            _req_cache[url] = result
+            _req_cache_ttl[url] = now + cache_ttl
+            logger.debug(f"[CACHE SET] {url} for {cache_ttl}s")
+        
+        return result
     except requests.exceptions.RequestException as e:
         logger.warning(f"[GET] {url} → {e}")
+        # Return cached value if available, even if expired
+        if url in _req_cache:
+            logger.warning(f"[FALLBACK TO STALE CACHE] {url}")
+            return _req_cache[url]
         return []
 
 
@@ -118,6 +146,15 @@ def _post(url, json=None, request=None):
         return None
 
 
+def _response_error(response, unavailable_message):
+    if response is None:
+        return unavailable_message
+    try:
+        return response.json()
+    except ValueError:
+        return response.text or f"HTTP {response.status_code}"
+
+
 def _delete(url, request=None):
     try:
         headers = _auth_headers(request) if request else {}
@@ -127,18 +164,41 @@ def _delete(url, request=None):
         return None
 
 
-def _track_behavior_event(request, customer_id, book_id, action):
+def _client_device(request):
+    user_agent = (request.META.get("HTTP_USER_AGENT") or "").lower()
+    if "mobile" in user_agent or "android" in user_agent or "iphone" in user_agent:
+        return "mobile"
+    if "ipad" in user_agent or "tablet" in user_agent:
+        return "tablet"
+    return "desktop"
+
+
+def _track_behavior_event(request, customer_id, product_id, action):
     if customer_id is None:
         return
-    _post(
-        f"{SVC['recommender']}/api/recommender/events/",
-        json={"customer_id": int(customer_id), "book_id": int(book_id), "action": action},
-        request=request,
-    )
+    if not request.session.session_key:
+        request.session.create()
+    try:
+        headers = _auth_headers(request)
+        requests.post(
+            f"{SVC['recommender']}/api/recommender/events/",
+            json={
+                "customer_id": int(customer_id),
+                "product_id": int(product_id),
+                "action": action,
+                "session_id": request.session.session_key,
+                "device": _client_device(request),
+                "persona": _role(request) or "anonymous",
+            },
+            headers=headers,
+            timeout=0.5,
+        )
+    except (TypeError, ValueError, requests.exceptions.RequestException) as e:
+        logger.debug("[behavior] skipped action=%s product=%s: %s", action, product_id, e)
 
 
 def _catalog_name_map(request, endpoint, field_name):
-    payload = _get(f"{SVC['catalog']}/{endpoint}/", request, params={"page_size": 200})
+    payload = _get(f"{SVC['product']}/{endpoint}/", request, params={"page_size": 200})
     items = _list_data(payload)
     result = {}
     for item in items:
@@ -162,17 +222,17 @@ def _hydrate_book_catalog_data(request, book):
     }
 
 
-def _recommendation_books(request, customer_id, limit=6):
+def _recommendation_products(request, customer_id, limit=6):
     payload = _get(f"{SVC['recommender']}/recommendations/{customer_id}/", request, params={"limit": limit})
     if not isinstance(payload, dict):
         return []
-    ids = payload.get("recommended_book_ids") or []
-    books = []
-    for bid in ids:
-        data = _get(f"{SVC['book']}/books/{bid}/", request)
+    ids = payload.get("recommended_product_ids") or payload.get("recommended_book_ids") or []
+    products = []
+    for pid in ids:
+        data = _get(f"{SVC['product']}/products/{pid}/", request)
         if isinstance(data, dict) and data.get("id"):
-            books.append(data)
-    return books
+            products.append(data)
+    return products
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -187,10 +247,7 @@ def login_view(request):
     login_type  = request.POST.get("login_type", "customer")   # "customer" | "staff"
     error = None
 
-    if login_type == "staff":
-        url = f"{SVC['staff']}/auth/login/"
-    else:
-        url = f"{SVC['customer']}/auth/login/"
+    url = f"{SVC['auth']}/auth/login/"
 
     try:
         r = requests.post(url, json={"username": username, "password": password}, timeout=5)
@@ -221,9 +278,10 @@ def register_view(request):
         "email":    request.POST.get("email", "").strip(),
         "password": request.POST.get("password", ""),
         "phone":    request.POST.get("phone", ""),
+        "role":     "customer"
     }
     try:
-        r = requests.post(f"{SVC['customer']}/auth/register/", json=payload, timeout=5)
+        r = requests.post(f"{SVC['auth']}/auth/register/", json=payload, timeout=5)
         if r.status_code == 201:
             data = r.json()
             request.session["access_token"]  = data["access"]
@@ -232,7 +290,7 @@ def register_view(request):
             return redirect("home")
         error = r.json()
     except requests.exceptions.RequestException:
-        error = "Customer service unavailable"
+        error = "Auth service unavailable"
 
     return render(request, "register.html", {"error": error})
 
@@ -243,28 +301,37 @@ def home(request):
     user = request.session.get("user", {})
     role = _role(request)
     eid = _entity_id(request)
-    
-    # Common data
-    books_payload = _get(f"{SVC['book']}/books/", request)
-    total_books = _total_count(books_payload)
-    
+
+    # Common data - cache product list for 10s to avoid repeated slow calls
+    products_payload = _get(f"{SVC['product']}/products/", request, cache_ttl=10)
+    total_products = _total_count(products_payload)
+
     if role == "customer":
         # Get AI recommendations for home page
-        recommendations = _recommendation_books(request, eid, limit=5) if eid else []
+        recommendations = _recommendation_products(request, eid, limit=5) if eid else []
         return render(request, "home.html", {
-            "total_books": total_books,
+            "total_products": total_products,
             "total_customers": 0,
             "total_orders": 0,
             "user": user,
             "is_customer": True,
             "recommendations": recommendations,
         })
-    
-    customers_payload = _get(f"{SVC['customer']}/customers/", request)
-    orders_payload = _get(f"{SVC['order']}/orders/", request)
+
+    if role not in ("staff", "manager"):
+        return render(request, "home.html", {
+            "total_products": total_products,
+            "total_customers": 0,
+            "total_orders": 0,
+            "user": user,
+            "is_customer": False,
+        })
+
+    # Cache order list for 10s
+    orders_payload = _get(f"{SVC['order']}/orders/", request, cache_ttl=10)
     return render(request, "home.html", {
-        "total_books": total_books,
-        "total_customers": _total_count(customers_payload),
+        "total_products": total_products,
+        "total_customers": 0,
         "total_orders": _total_count(orders_payload),
         "user": user,
         "is_customer": False,
@@ -273,41 +340,52 @@ def home(request):
 
 # ── Books ─────────────────────────────────────────────────────────────────────
 
-def book_list(request):
+def product_list(request):
     role = _role(request)
     error = None
     if request.method == "POST":
         if not role:
             return redirect("login")
         if role == "customer":
-            return render(request, "403.html", {"message": "Chỉ nhân viên / quản lý mới được thêm hoặc xóa sách."}, status=403)
+            return render(request, "403.html", {"message": "Chỉ nhân viên / quản lý mới được thêm hoặc xóa sản phẩm."}, status=403)
         payload = {
-            "title":      request.POST.get("title"),
-            "isbn":       request.POST.get("isbn", ""),
-            "list_price": request.POST.get("list_price"),
-            "sale_price": request.POST.get("sale_price"),
-            "stock":      request.POST.get("stock", 0),
+            "name":      request.POST.get("name"),
+            "sku":       request.POST.get("sku", ""),
+            "price":     request.POST.get("price"),
+            "category_id": request.POST.get("category_id"),
         }
-        r = _post(f"{SVC['book']}/books/", json=payload, request=request)
-        if r and r.status_code == 201:
-            return redirect("book_list")
-        error = r.json() if r else "book-service unavailable"
-    books_payload = _get(f"{SVC['book']}/books/", request, params=_list_query_params(request))
-    books_pagination = _pagination_context(books_payload, request)
-    return render(request, "books.html", {
-        "books": _list_data(books_payload),
-        "books_pagination": books_pagination,
+        r = _post(f"{SVC['product']}/products/", json=payload, request=request)
+        if r is not None and r.status_code == 201:
+            return redirect("product_list")
+        error = _response_error(r, "product-service unavailable")
+    products_payload = _get(f"{SVC['product']}/products/", request, params=_list_query_params(request))
+    products_pagination = _pagination_context(products_payload, request)
+    categories_payload = _get(f"{SVC['product']}/categories/", request, params={"page_size": 100})
+    categories = _list_data(categories_payload)
+    search_query = request.GET.get("search", "").strip()
+    if role == "customer" and search_query:
+        customer_id = _entity_id(request)
+        for product in _list_data(products_payload)[:5]:
+            product_id = product.get("id") if isinstance(product, dict) else None
+            if product_id is not None:
+                _track_behavior_event(request, customer_id, product_id, "search")
+    return render(request, "products.html", {
+        "products": _list_data(products_payload),
+        "products_pagination": products_pagination,
+        "categories": categories,
+        "search_query": search_query,
+        "category_id": request.GET.get("category_id", ""),
         "error": error,
-        "can_manage_books": role in ("staff", "manager"),
+        "can_manage_products": role in ("staff", "manager"),
     })
 
 
-def book_detail(request, book_id):
+def product_detail(request, product_id):
     role = _role(request)
     customer_id = _entity_id(request) if role == "customer" else None
-    book = _get(f"{SVC['book']}/books/{book_id}/", request)
-    if not isinstance(book, dict) or not book.get("id"):
-        return render(request, "403.html", {"message": "Không tìm thấy sách."}, status=404)
+    product = _get(f"{SVC['product']}/products/{product_id}/", request)
+    if not isinstance(product, dict) or not product.get("id"):
+        return render(request, "403.html", {"message": "Không tìm thấy sản phẩm."}, status=404)
 
     error = None
     if request.method == "POST":
@@ -316,23 +394,21 @@ def book_detail(request, book_id):
         quantity = int(request.POST.get("quantity", 1))
         r = _post(
             f"{SVC['cart']}/carts/{customer_id}/items/",
-            json={"book_id": int(book_id), "quantity": quantity},
+            json={"product_id": int(product_id), "quantity": quantity},
             request=request,
         )
-        if r and r.status_code == 201:
-            _track_behavior_event(request, customer_id, book_id, "cart_add")
+        if r is not None and r.status_code == 201:
+            _track_behavior_event(request, customer_id, product_id, "add_to_cart")
             return redirect("view_cart", customer_id=customer_id)
-        error = r.json() if r else "cart-service unavailable"
+        error = _response_error(r, "cart-service unavailable")
 
     if customer_id is not None:
-        _track_behavior_event(request, customer_id, book_id, "click")
-        _track_behavior_event(request, customer_id, book_id, "view")
+        _track_behavior_event(request, customer_id, product_id, "click")
+        _track_behavior_event(request, customer_id, product_id, "view")
 
-    catalog_data = _hydrate_book_catalog_data(request, book)
-    recommendations = _recommendation_books(request, customer_id, limit=6) if customer_id else []
-    return render(request, "book_detail.html", {
-        "book": book,
-        "book_catalog": catalog_data,
+    recommendations = _recommendation_products(request, customer_id, limit=6) if customer_id else []
+    return render(request, "product_detail.html", {
+        "product": product,
         "recommendations": recommendations,
         "is_customer": role == "customer",
         "customer_id": customer_id,
@@ -341,34 +417,13 @@ def book_detail(request, book_id):
 
 
 @require_roles("staff", "manager")
-def book_delete(request, book_id):
+def product_delete(request, product_id):
     if request.method == "POST":
-        _delete(f"{SVC['book']}/books/{book_id}/", request)
-    return redirect("book_list")
+        _delete(f"{SVC['product']}/products/{product_id}/", request)
+    return redirect("product_list")
 
 
-# ── Customers ─────────────────────────────────────────────────────────────────
 
-@require_roles("staff", "manager")
-def customer_list(request):
-    error = None
-    if request.method == "POST":
-        payload = {
-            "username": request.POST.get("username"),
-            "email":    request.POST.get("email"),
-            "password": request.POST.get("password"),
-            "phone":    request.POST.get("phone", ""),
-        }
-        r = _post(f"{SVC['customer']}/customers/", json=payload, request=request)
-        if r and r.status_code == 201:
-            return redirect("customer_list")
-        error = r.json() if r else "customer-service unavailable"
-    customers_payload = _get(f"{SVC['customer']}/customers/", request, params=_list_query_params(request))
-    return render(request, "customers.html", {
-        "customers": _list_data(customers_payload),
-        "customers_pagination": _pagination_context(customers_payload, request),
-        "error": error,
-    })
 
 
 # ── Cart ──────────────────────────────────────────────────────────────────────
@@ -378,32 +433,47 @@ def customer_list(request):
 def view_cart(request, customer_id):
     error = None
     if request.method == "POST":
-        book_id  = request.POST.get("book_id")
+        action = request.POST.get("action", "add")
+        product_id = request.POST.get("product_id") or request.POST.get("book_id")
+        if action == "remove":
+            if product_id:
+                r = _delete(f"{SVC['cart']}/carts/{customer_id}/items/{int(product_id)}/", request)
+                if r is not None and r.status_code in (200, 204):
+                    if _role(request) == "customer":
+                        _track_behavior_event(request, customer_id, int(product_id), "remove_from_cart")
+            return redirect("view_cart", customer_id=customer_id)
         quantity = int(request.POST.get("quantity", 1))
+        if not product_id:
+            return render(request, "cart.html", {
+                "cart": _get(f"{SVC['cart']}/carts/{customer_id}/", request),
+                "customer_id": customer_id,
+                "products": _list_data(_get(f"{SVC['product']}/products/", request, params={"page_size": 500})),
+                "error": "Vui lòng chọn sản phẩm.",
+            })
         r = _post(
             f"{SVC['cart']}/carts/{customer_id}/items/",
-            json={"book_id": int(book_id), "quantity": quantity},
+            json={"product_id": int(product_id), "quantity": quantity},
             request=request,
         )
-        if r and r.status_code == 201:
+        if r is not None and r.status_code == 201:
             if _role(request) == "customer":
-                _track_behavior_event(request, customer_id, int(book_id), "cart_add")
+                _track_behavior_event(request, customer_id, int(product_id), "add_to_cart")
             return redirect("view_cart", customer_id=customer_id)
-        error = r.json() if r else "cart-service unavailable"
+        error = _response_error(r, "cart-service unavailable")
 
     cart = _get(f"{SVC['cart']}/carts/{customer_id}/", request)
-    books_payload = _get(f"{SVC['book']}/books/", request, params={"page_size": 500})
-    book_map = {b.get("id"): b for b in _list_data(books_payload) if isinstance(b, dict) and b.get("id") is not None}
+    products_payload = _get(f"{SVC['product']}/products/", request, params={"page_size": 500})
+    product_map = {b.get("id"): b for b in _list_data(products_payload) if isinstance(b, dict) and b.get("id") is not None}
 
     cart_items = []
     for item in (cart or {}).get("items", []):
-        bid = item.get("book_id")
-        book = book_map.get(bid, {})
+        bid = item.get("product_id", item.get("book_id"))
+        product = product_map.get(bid, {})
         unit_price = float(item.get("unit_price") or 0)
         qty = int(item.get("quantity") or 0)
         cart_items.append({
             **item,
-            "book_title": book.get("title") or f"Book #{bid}",
+            "product_name": product.get("name") or f"Sản phẩm #{bid}",
             "line_total": unit_price * qty,
         })
 
@@ -411,7 +481,7 @@ def view_cart(request, customer_id):
         cart["items"] = cart_items
 
     return render(request, "cart.html", {
-        "cart": cart, "customer_id": customer_id, "books": _list_data(books_payload), "error": error,
+        "cart": cart, "customer_id": customer_id, "products": _list_data(products_payload), "error": error,
     })
 
 
@@ -433,16 +503,17 @@ def checkout(request, customer_id):
     if request.method == "POST":
         payload = {
             "customer_id": customer_id,
-            "items": [{"book_id": it["book_id"], "quantity": it["quantity"], "unit_price": float(it.get("unit_price", 0))} for it in items],
+            "items": [{"product_id": it["product_id"], "quantity": it["quantity"], "unit_price": float(it.get("unit_price", 0))} for it in items],
             "shipping_fee": 0,
         }
         r = _post(f"{SVC['order']}/orders/", json=payload, request=request)
-        if r and r.status_code in (200, 201):
+        if r is not None and r.status_code in (200, 201):
             data = r.json()
             order_id = data.get("id")
             _delete(f"{SVC['cart']}/carts/{customer_id}/", request)
             return redirect("order_pay", order_id=order_id)
-        err = (r.json() if r else {}).get("error") or (r.json() if r else "order-service lỗi") if r else "order-service không phản hồi"
+        err_payload = _response_error(r, "order-service không phản hồi")
+        err = err_payload.get("error") if isinstance(err_payload, dict) else err_payload
         return render(request, "checkout.html", {
             "customer_id": customer_id, "cart": cart, "cart_items": items, "error": err,
         })
@@ -483,10 +554,17 @@ def order_pay(request, order_id):
             },
             request=request,
         )
-        if r and r.status_code in (200, 201):
+        if r is not None and r.status_code in (200, 201):
             request.session["order_success"] = f"Đã thanh toán đơn #{order_id} thành công."
+            if _role(request) == "customer":
+                customer_id = order.get("customer_id")
+                for item in order.get("items", []):
+                    product_id = item.get("product_id") if isinstance(item, dict) else None
+                    if product_id is not None:
+                        _track_behavior_event(request, customer_id, int(product_id), "purchase")
             return redirect("order_list")
-        err = (r.json() if r else {}).get("error") or "Thanh toán thất bại." if r else "pay-service không phản hồi"
+        err_payload = _response_error(r, "pay-service không phản hồi")
+        err = err_payload.get("error") if isinstance(err_payload, dict) else err_payload
         methods_payload = _get(f"{SVC['pay']}/payment-methods/", request) or []
         return render(request, "order_pay.html", {
             "order": order, "order_id": order_id, "payment_methods": _list_data(methods_payload), "error": err,
@@ -549,19 +627,19 @@ def recommendation_list(request):
 
     error = None
     if request.method == "POST":
-        book_id = request.POST.get("book_id")
+        product_id = request.POST.get("product_id")
         quantity = int(request.POST.get("quantity", 1))
         r = _post(
             f"{SVC['cart']}/carts/{customer_id}/items/",
-            json={"book_id": int(book_id), "quantity": quantity},
+            json={"product_id": int(product_id), "quantity": quantity},
             request=request,
         )
-        if r and r.status_code == 201:
-            _track_behavior_event(request, customer_id, int(book_id), "cart_add")
+        if r is not None and r.status_code == 201:
+            _track_behavior_event(request, customer_id, int(product_id), "add_to_cart")
             return redirect("recommendations")
-        error = r.json() if r else "cart-service unavailable"
+        error = _response_error(r, "cart-service unavailable")
 
-    recommendations = _recommendation_books(request, customer_id, limit=12)
+    recommendations = _recommendation_products(request, customer_id, limit=12)
     return render(request, "recommendations.html", {
         "recommendations": recommendations,
         "customer_id": customer_id,
@@ -572,24 +650,24 @@ def recommendation_list(request):
 # ── Catalog ───────────────────────────────────────────────────────────────────
 
 def catalog_view(request):
-    allowed_tabs = {"authors", "genres", "publishers"}
-    active_tab = request.GET.get("tab", "authors")
+    allowed_tabs = {"categories", "brands", "product_types"}
+    active_tab = request.GET.get("tab", "categories")
     if active_tab not in allowed_tabs:
-        active_tab = "authors"
+        active_tab = "categories"
 
     endpoint_map = {
-        "authors": "authors",
-        "genres": "genres",
-        "publishers": "publishers",
+        "categories": "categories",
+        "brands": "brands",
+        "product_types": "product_types",
     }
     params = _list_query_params(request)
-    payload = _get(f"{SVC['catalog']}/{endpoint_map[active_tab]}/", request, params=params)
+    payload = _get(f"{SVC['product']}/{endpoint_map[active_tab]}/", request, params=params)
     pagination = _pagination_context(payload, request, extra_query={"tab": active_tab})
 
     tab_labels = {
-        "authors": "Tác giả",
-        "genres": "Genre",
-        "publishers": "Nhà xuất bản",
+        "categories": "Danh mục",
+        "brands": "Thương hiệu",
+        "product_types": "Loại sản phẩm",
     }
 
     return render(request, "catalog.html", {
@@ -619,7 +697,7 @@ def ai_chat_proxy(request):
     except Exception:
         return JsonResponse({"error": "Invalid JSON body"}, status=400)
 
-    recommender_url = f"{SVC['recommender']}/api/recommender/chat"
+    recommender_url = f"{SVC['recommender']}/api/recommender/chat-ktmp"
     last_error = None
     for attempt in range(1, 4):
         try:

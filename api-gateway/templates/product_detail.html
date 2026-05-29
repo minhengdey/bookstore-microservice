@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="margin-bottom: 24px;">
+    <a href="/products/" class="slide-in-left"
+        style="color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px;">
+        ← Quay lại danh sách
+    </a>
+</div>
+
+<div class="product-detail-grid">
+    <div class="product-image-large">
+        🛍️
+    </div>
+
+    <div class="product-info">
+        <h1 class="product-title">{{ product.name }}</h1>
+        <div class="product-price-large">
+            {{ product.price }}₫
+        </div>
+
+        <div class="card" style="padding: 20px;">
+            <h3>Chi tiết sản phẩm</h3>
+            <p style="margin: 15px 0; color: var(--text-secondary); line-height: 1.6;">{{
+                product.description|default:"Không có mô tả" }}</p>
+
+            <div class="product-specs">
+                <div class="spec-item">
+                    <strong>SKU:</strong> {{ product.sku|default:"—" }}
+                </div>
+                <div class="spec-item">
+                    <strong>Trạng thái:</strong> <span class="badge badge-success">{{ product.status|default:"Active"
+                        }}</span>
+                </div>
+            </div>
+
+            {% if product.attributes %}
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+                <h4 style="margin-bottom: 12px; font-weight: 700; color: var(--text-primary);">Thông số kỹ thuật</h4>
+                <div class="product-specs">
+                    {% for key, value in product.attributes.items %}
+                    <div class="spec-item">
+                        <strong>{{ key|title }}:</strong> {{ value }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if is_customer %}
+        <div class="card" style="border-left: 4px solid var(--primary); border-radius: var(--radius);">
+            {% if error %}
+            <div class="alert-error" style="margin-bottom: 16px;">{{ error }}</div>
+            {% endif %}
+            <form method="POST" class="product-add-cart">
+                {% csrf_token %}
+                <label style="font-weight: 700; white-space: nowrap;">Số lượng:</label>
+                <input type="number" name="quantity" value="1" min="1" required>
+                <button type="submit" class="btn btn-primary" style="padding: 10px 24px;">
+                    🛒 Thêm vào giỏ hàng
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if recommendations %}
+<div class="card fade-in" style="margin-top: 40px;">
+    <h2 style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+        💖 Có thể bạn cũng thích
+    </h2>
+    <div class="recommendations-grid">
+        {% for item in recommendations %}
+        <a href="/products/{{ item.id }}/" style="text-decoration: none; color: inherit;">
+            <div class="recommendation-card">
+                <div class="recommendation-image">📦</div>
+                <div class="recommendation-content">
+                    <div style="font-size: 0.9rem; font-weight: 600; color: var(--primary); margin-bottom: 8px;">Sản
+                        phẩm liên quan</div>
+                    <div class="recommendation-name">{{ item.name }}</div>
+                    <div class="recommendation-price">{{ item.price }}₫</div>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

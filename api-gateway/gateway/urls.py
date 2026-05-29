@@ -10,13 +10,12 @@ urlpatterns = [
     # ── Dashboard ──────────────────────────────────────────────────────────────
     path("",                views.home,           name="home"),
 
-    # ── Books ──────────────────────────────────────────────────────────────────
-    path("books/",                         views.book_list,    name="book_list"),
-    path("books/<int:book_id>/",           views.book_detail,  name="book_detail"),
-    path("books/<int:book_id>/delete/",    views.book_delete,  name="book_delete"),
+    # ── Products ───────────────────────────────────────────────────────────────
+    path("products/",                         views.product_list,    name="product_list"),
+    path("products/<int:product_id>/",           views.product_detail,  name="product_detail"),
+    path("products/<int:product_id>/delete/",    views.product_delete,  name="product_delete"),
 
-    # ── Customers ──────────────────────────────────────────────────────────────
-    path("customers/",     views.customer_list, name="customer_list"),
+    # ── Customers (Removed) ──────────────────────────────────────────────────
 
     # ── Cart ───────────────────────────────────────────────────────────────────
     path("cart/<int:customer_id>/",           views.view_cart,   name="view_cart"),

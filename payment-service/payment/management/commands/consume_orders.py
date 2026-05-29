@@ -1,0 +1,82 @@
+import json
+import logging
+import pika
+import os
+from django.core.management.base import BaseCommand
+from payment.models import Payment, PaymentStatus, ShippingStatus, PaymentOutbox
+from common.events import EventPublisher
+from django.db import transaction
+
+logger = logging.getLogger(__name__)
+
+class Command(BaseCommand):
+    help = "Consume order_events to process payments"
+
+    def handle(self, *args, **options):
+        self.stdout.write(self.style.SUCCESS("Starting Payment Consumer..."))
+        
+        channel = EventPublisher.get_channel()
+        
+        # Setup Queue
+        queue_name = 'payment_order_consumer'
+        channel.queue_declare(queue=queue_name, durable=True, arguments={
+            'x-dead-letter-exchange': 'dlx',
+            'x-dead-letter-routing-key': 'dlq'
+        })
+        channel.queue_bind(queue=queue_name, exchange='order_events', routing_key='')
+        
+        def callback(ch, method, properties, body):
+            try:
+                payload = json.loads(body)
+                event_type = payload.get("event_type")
+                
+                if event_type == "order_created":
+                    data = payload.get("data", {})
+                    order_id = data.get("order_id")
+                    amount = float(data.get("total_amount", 0))
+                    
+                    if not order_id:
+                        raise ValueError("Missing order_id")
+                        
+                    # Idempotency Check!
+                    if Payment.objects.filter(order_id=order_id).exists():
+                        logger.warning(f"Payment for order {order_id} already exists. Skipping.")
+                        ch.basic_ack(delivery_tag=method.delivery_tag)
+                        return
+                        
+                    # Mock Process Payment
+                    with transaction.atomic():
+                        payment = Payment.objects.create(
+                            order_id=order_id,
+                            amount=amount,
+                            payment_method="credit_card",
+                            payment_status=PaymentStatus.SUCCESS,
+                            shipping_status=ShippingStatus.PENDING
+                        )
+                        
+                        outbox_payload = {
+                            "payment_id": payment.id,
+                            "order_id": order_id,
+                            "amount": str(amount),
+                            "shipping_status": payment.shipping_status
+                        }
+                        PaymentOutbox.objects.create(
+                            aggregate_id=str(payment.id),
+                            event_type="payment_completed",
+                            payload=outbox_payload
+                        )
+                    
+                    logger.info(f"Successfully processed payment for order {order_id}")
+                    
+                # Acknowledge
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+            except Exception as e:
+                logger.error(f"Error processing order event: {e}")
+                # Reject and send to DLQ
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+
+        channel.basic_consume(queue=queue_name, on_message_callback=callback)
+        try:
+            channel.start_consuming()
+        except KeyboardInterrupt:
+            channel.stop_consuming()

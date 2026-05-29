@@ -5,7 +5,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "api-gateway-dev-key")
 DEBUG = True
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "api-gateway",
+    "api-gateway:8000",
+    "*.localhost",
+    "*"  # Allow all for proxy validation via X-Forwarded-Host
+]
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -19,6 +26,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
     "gateway.middleware.JWTAuthMiddleware",
 ]
 
@@ -59,15 +67,26 @@ JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bookstore-jwt-secret-dev")
 
 # ── Service URLs ───────────────────────────────────────────────────────────────
 SERVICE_URLS = {
-    "customer":    os.environ.get("CUSTOMER_SERVICE_URL",    "http://customer-service:8000"),
-    "book":        os.environ.get("BOOK_SERVICE_URL",        "http://book-service:8000"),
-    "catalog":     os.environ.get("CATALOG_SERVICE_URL",     "http://catalog-service:8000"),
+    "auth":        os.environ.get("AUTH_SERVICE_URL",        "http://auth-service:8000"),
+    "user":        os.environ.get("USER_SERVICE_URL",        "http://user-service:8000"),
+    "product":     os.environ.get("PRODUCT_SERVICE_URL",     "http://product-service:8000"),
     "cart":        os.environ.get("CART_SERVICE_URL",        "http://cart-service:8000"),
     "order":       os.environ.get("ORDER_SERVICE_URL",       "http://order-service:8000"),
-    "pay":         os.environ.get("PAY_SERVICE_URL",         "http://pay-service:8000"),
-    "ship":        os.environ.get("SHIP_SERVICE_URL",        "http://ship-service:8000"),
-    "comment":     os.environ.get("COMMENT_RATE_URL",        "http://comment-rate-service:8000"),
+    "pay":         os.environ.get("PAY_SERVICE_URL",         "http://payment-service:8000"),
+    "ship":        os.environ.get("SHIP_SERVICE_URL",        "http://shipping-service:8000"),
     "recommender": os.environ.get("RECOMMENDER_URL",         "http://recommender-ai-service:8000"),
-    "staff":       os.environ.get("STAFF_SERVICE_URL",       "http://staff-service:8000"),
-    "manager":     os.environ.get("MANAGER_SERVICE_URL",     "http://manager-service:8000"),
 }
+
+# Proxy / secure settings (environment-driven; safe defaults for local/dev)
+USE_X_FORWARDED_HOST = True  # Always trust X-Forwarded-Host from nginx
+USE_X_FORWARDED_PORT = True  # Trust X-Forwarded-Port from nginx
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # Trust X-Forwarded-Proto from nginx
+SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "False").lower() == "true"
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "False").lower() == "true"
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = "Lax"  # Lax to allow redirects from external sites
+CSRF_TRUSTED_ORIGINS = (
+    os.environ.get("CSRF_TRUSTED_ORIGINS", "").split() if os.environ.get("CSRF_TRUSTED_ORIGINS") else []
+)

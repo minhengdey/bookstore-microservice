@@ -37,7 +37,7 @@
             <div class="book-ai-body" id="book-ai-body">
                 <!-- Tin nhắn mặc định chào hỏi -->
                 <div class="book-ai-msg book-ai-msg-ai">
-                    <p>Chào bạn nè! Mình là Mochi, trợ lý tư vấn siêu cấp đáng yêu của tiệm sách nè. 🌸 Bạn đang tìm sách gì để đọc cho "chill" hay để học tập đó? Cứ nói mình biết nha! ✨</p>
+                    <p>Chào bạn nè! Mình là Mochi, trợ lý tư vấn siêu cấp đáng yêu của E-Commerce nè. 🌸 Bạn đang tìm sản phẩm gì đó? Cứ nói mình biết nha! ✨</p>
                 </div>
                 
                 <!-- Typing Indicator -->
@@ -66,13 +66,13 @@
     // Behavioral Tracking Logic (Session based)
     const trackLocalBehavior = () => {
         const path = window.location.pathname;
-        const match = path.match(/\/books\/(\d+)\//);
+        const match = path.match(/\/products\/(\d+)\//);
         if (match) {
-            const bookId = match[1];
+            const productId = match[1];
             let behaviors = JSON.parse(sessionStorage.getItem("mochi_recent_behaviors") || "[]");
             // Only add if not already the last one
-            if (behaviors[behaviors.length - 1] !== `view_book_${bookId}`) {
-                behaviors.push(`view_book_${bookId}`);
+            if (behaviors[behaviors.length - 1] !== `view_product_${productId}`) {
+                behaviors.push(`view_product_${productId}`);
                 sessionStorage.setItem("mochi_recent_behaviors", JSON.stringify(behaviors.slice(-5)));
             }
         }
@@ -146,6 +146,55 @@
         scrollToBottom();
     };
 
+    const formatPrice = (value) => {
+        const num = Number(value);
+        if (!Number.isFinite(num)) return null;
+        return `${num.toLocaleString("vi-VN")}₫`;
+    };
+
+    const addRecommendedProducts = (products) => {
+        if (!Array.isArray(products) || products.length === 0) return;
+
+        const wrap = document.createElement("div");
+        wrap.className = "book-ai-msg book-ai-msg-ai";
+
+        const itemsHtml = products.slice(0, 5).map((p) => {
+            const productId = Number(p.product_id || p.id);
+            if (!Number.isFinite(productId)) return "";
+            const name = String(p.name || `Sản phẩm #${productId}`);
+            const safeName = name.replace(/[&<>"']/g, (ch) => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                "\"": "&quot;",
+                "'": "&#39;"
+            }[ch]));
+            const priceText = formatPrice(p.price);
+            const metaParts = [];
+            if (p.sku) metaParts.push(`SKU: ${p.sku}`);
+            if (priceText) metaParts.push(`Giá: ${priceText}`);
+            const meta = metaParts.join(" • ");
+
+            return `
+                <li style="margin: 8px 0;">
+                    <a href="/products/${productId}/" style="color: inherit; text-decoration: underline; font-weight: 600;">
+                        ${safeName}
+                    </a>
+                    ${meta ? `<div style="font-size: 0.8rem; opacity: 0.85;">${meta}</div>` : ""}
+                </li>
+            `;
+        }).join("");
+
+        if (!itemsHtml.trim()) return;
+
+        wrap.innerHTML = `
+            <p style="margin-bottom: 8px;">🛍️ Một vài sản phẩm phù hợp cho bạn nè:</p>
+            <ul style="margin: 0; padding-left: 18px;">${itemsHtml}</ul>
+        `;
+        body.insertBefore(wrap, typing);
+        scrollToBottom();
+    };
+
     let chatHistory = loadHistory();
     if (chatHistory.length > 0) {
         chatHistory.forEach(([role, content]) => addMessage(content, role === "user"));
@@ -188,6 +237,9 @@
                 chatHistory.push(["assistant", data.answer]);
                 saveHistory(chatHistory);
             }
+            if (Array.isArray(data.products) && data.products.length > 0) {
+                addRecommendedProducts(data.products);
+            }
         } catch (error) {
             typing.classList.remove("book-ai-show");
             addMessage("Mochi không thức dậy được để trả lời bạn... 😿", false);
@@ -196,12 +248,5 @@
 
     sendBtn.addEventListener("click", handleSend);
     input.addEventListener("keypress", (e) => { if (e.key === "Enter") handleSend(); });
-
-})();
-
-    sendBtn.addEventListener("click", handleSend);
-    input.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") handleSend();
-    });
 
 })();
