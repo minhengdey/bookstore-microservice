@@ -1,6 +1,6 @@
 """
 Tạo dữ liệu mẫu: RecommendationLog.
-Giả định customer-service và book-service đã seed (customer_id 1,2,3; book_id 1-5).
+Giả định customer-service đã seed (customer_id 1,2,3) và product catalog đã có các product_id 1-12.
 Chạy: python manage.py seed_mock
 """
 from django.core.management.base import BaseCommand
@@ -24,18 +24,23 @@ class Command(BaseCommand):
 
         RecommendationLog.objects.create(
             customer_id=1,
-            book_ids=[2, 3, 4],
+            product_ids=[4, 6, 11],
             strategy="collaborative",
         )
         RecommendationLog.objects.create(
             customer_id=2,
-            book_ids=[1, 3, 5],
+            product_ids=[1, 9, 10],
             strategy="content_based",
         )
         RecommendationLog.objects.create(
             customer_id=3,
-            book_ids=[1, 2, 4],
-            strategy="collaborative",
+            product_ids=[8, 12, 7],
+            strategy="hybrid",
+        )
+        RecommendationLog.objects.create(
+            customer_id=1,
+            product_ids=[2, 5, 7],
+            strategy="trending",
         )
 
-        self.stdout.write(self.style.SUCCESS("Created 3 recommendation logs."))
+        self.stdout.write(self.style.SUCCESS("Created 4 recommendation logs."))

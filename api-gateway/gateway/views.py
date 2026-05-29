@@ -1,9 +1,13 @@
 from django.shortcuts import render, redirect
 from django.conf import settings
 import requests, logging
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 from urllib.parse import urlencode
 from collections import defaultdict
+from django.core.cache import cache
 
 from .permissions import _role, _entity_id, require_roles, require_customer_or_staff, customer_can_only_own
 
@@ -13,6 +17,32 @@ SVC = settings.SERVICE_URLS
 # Simple request cache
 _req_cache = {}
 _req_cache_ttl = {}
+
+# Global session to reuse HTTP connections and enable pooling
+SESSION = requests.Session()
+adapter = HTTPAdapter(pool_connections=50, pool_maxsize=50, max_retries=Retry(total=1, backoff_factor=0.1))
+SESSION.mount("http://", adapter)
+SESSION.mount("https://", adapter)
+
+
+def _parallel_call(func_calls, max_workers=8):
+    """Execute a list of (func, args, kwargs) in parallel.
+
+    Returns list of results in the same order. Exceptions become None.
+    """
+    results = [None] * len(func_calls)
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        future_to_index = {}
+        for idx, (fn, args, kwargs) in enumerate(func_calls):
+            future = ex.submit(fn, *args, **(kwargs or {}))
+            future_to_index[future] = idx
+        for fut in as_completed(future_to_index):
+            idx = future_to_index[fut]
+            try:
+                results[idx] = fut.result()
+            except Exception:
+                results[idx] = None
+    return results
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -111,36 +141,58 @@ def _get(url, request=None, cache_ttl=0, **kwargs):
     """GET with optional caching. cache_ttl in seconds (0=no cache)."""
     # Check cache
     now = time.time()
-    if cache_ttl > 0 and url in _req_cache:
-        if now < _req_cache_ttl.get(url, 0):
-            logger.debug(f"[CACHE HIT] {url}")
-            return _req_cache[url]
+    # Build cache key including params if present so different queries cache separately
+    params = kwargs.get("params") or {}
+    try:
+        if params:
+            # Sort params for stable key
+            param_items = sorted(params.items())
+            cache_key = url + "?" + urlencode(param_items)
+        else:
+            cache_key = url
+    except Exception:
+        cache_key = url
+    if cache_ttl > 0:
+        try:
+            cached = cache.get(cache_key)
+            if cached is not None:
+                logger.debug(f"[CACHE HIT redis] {cache_key}")
+                return cached
+        except Exception:
+            # Fallback to in-process cache if redis unavailable
+            if cache_key in _req_cache and now < _req_cache_ttl.get(cache_key, 0):
+                logger.debug(f"[CACHE HIT local] {cache_key}")
+                return _req_cache[cache_key]
     
     try:
         headers = _auth_headers(request) if request else {}
-        r = requests.get(url, headers=headers, timeout=60, **kwargs)
+        r = SESSION.get(url, headers=headers, timeout=60, **kwargs)
         result = r.json() if r.status_code == 200 else []
         
-        # Cache if requested
+        # Cache if requested (prefer Redis via Django cache)
         if cache_ttl > 0:
-            _req_cache[url] = result
-            _req_cache_ttl[url] = now + cache_ttl
-            logger.debug(f"[CACHE SET] {url} for {cache_ttl}s")
+            try:
+                cache.set(cache_key, result, timeout=cache_ttl)
+                logger.debug(f"[CACHE SET redis] {cache_key} for {cache_ttl}s")
+            except Exception:
+                _req_cache[cache_key] = result
+                _req_cache_ttl[cache_key] = now + cache_ttl
+                logger.debug(f"[CACHE SET local] {cache_key} for {cache_ttl}s")
         
         return result
     except requests.exceptions.RequestException as e:
         logger.warning(f"[GET] {url} → {e}")
         # Return cached value if available, even if expired
-        if url in _req_cache:
-            logger.warning(f"[FALLBACK TO STALE CACHE] {url}")
-            return _req_cache[url]
+        if cache_key in _req_cache:
+            logger.warning(f"[FALLBACK TO STALE CACHE] {cache_key}")
+            return _req_cache[cache_key]
         return []
 
 
 def _post(url, json=None, request=None):
     try:
         headers = _auth_headers(request) if request else {}
-        return requests.post(url, json=json, headers=headers, timeout=5)
+        return SESSION.post(url, json=json, headers=headers, timeout=5)
     except requests.exceptions.RequestException as e:
         logger.warning(f"[POST] {url} → {e}")
         return None
@@ -158,7 +210,7 @@ def _response_error(response, unavailable_message):
 def _delete(url, request=None):
     try:
         headers = _auth_headers(request) if request else {}
-        return requests.delete(url, headers=headers, timeout=5)
+        return SESSION.delete(url, headers=headers, timeout=5)
     except requests.exceptions.RequestException as e:
         logger.warning(f"[DELETE] {url} → {e}")
         return None
@@ -198,7 +250,7 @@ def _track_behavior_event(request, customer_id, product_id, action):
 
 
 def _catalog_name_map(request, endpoint, field_name):
-    payload = _get(f"{SVC['product']}/{endpoint}/", request, params={"page_size": 200})
+    payload = _get(f"{SVC['product']}/{endpoint}/", request, params={"page_size": 200}, cache_ttl=300)
     items = _list_data(payload)
     result = {}
     for item in items:
@@ -210,10 +262,13 @@ def _catalog_name_map(request, endpoint, field_name):
 
 
 def _hydrate_book_catalog_data(request, book):
-    author_map = _catalog_name_map(request, "authors", "author_name")
-    genre_map = _catalog_name_map(request, "genres", "genre_name")
-    publisher_map = _catalog_name_map(request, "publishers", "publisher_name")
-    category_map = _catalog_name_map(request, "categories", "category_name")
+    calls = [
+        (_catalog_name_map, (request, "authors", "author_name"), {}),
+        (_catalog_name_map, (request, "genres", "genre_name"), {}),
+        (_catalog_name_map, (request, "publishers", "publisher_name"), {}),
+        (_catalog_name_map, (request, "categories", "category_name"), {}),
+    ]
+    author_map, genre_map, publisher_map, category_map = _parallel_call(calls, max_workers=4)
     return {
         "authors": [author_map.get(int(i), f"Author #{i}") for i in book.get("author_ids", [])],
         "genres": [genre_map.get(int(i), f"Genre #{i}") for i in book.get("genre_ids", [])],
@@ -223,13 +278,15 @@ def _hydrate_book_catalog_data(request, book):
 
 
 def _recommendation_products(request, customer_id, limit=6):
-    payload = _get(f"{SVC['recommender']}/recommendations/{customer_id}/", request, params={"limit": limit})
+    payload = _get(f"{SVC['recommender']}/recommendations/{customer_id}/", request, params={"limit": limit}, cache_ttl=5)
     if not isinstance(payload, dict):
         return []
     ids = payload.get("recommended_product_ids") or payload.get("recommended_book_ids") or []
     products = []
-    for pid in ids:
-        data = _get(f"{SVC['product']}/products/{pid}/", request)
+    # Fetch product details in parallel
+    calls = [(_get, (f"{SVC['product']}/products/{pid}/", request), {"cache_ttl": 30}) for pid in ids]
+    results = _parallel_call(calls, max_workers=min(8, len(calls) or 1))
+    for data in results:
         if isinstance(data, dict) and data.get("id"):
             products.append(data)
     return products
@@ -303,7 +360,14 @@ def home(request):
     eid = _entity_id(request)
 
     # Common data - cache product list for 10s to avoid repeated slow calls
-    products_payload = _get(f"{SVC['product']}/products/", request, cache_ttl=10)
+    calls = [
+        (_get, (f"{SVC['product']}/products/", request), {"cache_ttl": 10}),
+    ]
+    # For staff we also fetch orders; do that in parallel when needed
+    if role in ("staff", "manager"):
+        calls.append((_get, (f"{SVC['order']}/orders/", request), {"cache_ttl": 10}))
+    results = _parallel_call(calls, max_workers=len(calls))
+    products_payload = results[0]
     total_products = _total_count(products_payload)
 
     if role == "customer":
@@ -328,7 +392,7 @@ def home(request):
         })
 
     # Cache order list for 10s
-    orders_payload = _get(f"{SVC['order']}/orders/", request, cache_ttl=10)
+    orders_payload = results[1] if len(results) > 1 else _get(f"{SVC['order']}/orders/", request, cache_ttl=10)
     return render(request, "home.html", {
         "total_products": total_products,
         "total_customers": 0,
@@ -358,9 +422,13 @@ def product_list(request):
         if r is not None and r.status_code == 201:
             return redirect("product_list")
         error = _response_error(r, "product-service unavailable")
-    products_payload = _get(f"{SVC['product']}/products/", request, params=_list_query_params(request))
+    # Fetch products and categories in parallel to reduce latency
+    calls = [
+        (_get, (f"{SVC['product']}/products/", request), {"params": _list_query_params(request), "cache_ttl": 10}),
+        (_get, (f"{SVC['product']}/categories/", request), {"params": {"page_size": 100}, "cache_ttl": 300}),
+    ]
+    products_payload, categories_payload = _parallel_call(calls, max_workers=2)
     products_pagination = _pagination_context(products_payload, request)
-    categories_payload = _get(f"{SVC['product']}/categories/", request, params={"page_size": 100})
     categories = _list_data(categories_payload)
     search_query = request.GET.get("search", "").strip()
     if role == "customer" and search_query:
@@ -383,7 +451,7 @@ def product_list(request):
 def product_detail(request, product_id):
     role = _role(request)
     customer_id = _entity_id(request) if role == "customer" else None
-    product = _get(f"{SVC['product']}/products/{product_id}/", request)
+    product = _get(f"{SVC['product']}/products/{product_id}/", request, cache_ttl=30)
     if not isinstance(product, dict) or not product.get("id"):
         return render(request, "403.html", {"message": "Không tìm thấy sản phẩm."}, status=404)
 
@@ -447,7 +515,7 @@ def view_cart(request, customer_id):
             return render(request, "cart.html", {
                 "cart": _get(f"{SVC['cart']}/carts/{customer_id}/", request),
                 "customer_id": customer_id,
-                "products": _list_data(_get(f"{SVC['product']}/products/", request, params={"page_size": 500})),
+                "products": _list_data(_get(f"{SVC['product']}/products/", request, params={"page_size": 500}, cache_ttl=10)),
                 "error": "Vui lòng chọn sản phẩm.",
             })
         r = _post(
@@ -461,8 +529,12 @@ def view_cart(request, customer_id):
             return redirect("view_cart", customer_id=customer_id)
         error = _response_error(r, "cart-service unavailable")
 
-    cart = _get(f"{SVC['cart']}/carts/{customer_id}/", request)
-    products_payload = _get(f"{SVC['product']}/products/", request, params={"page_size": 500})
+    # Fetch cart and product list in parallel
+    calls = [
+        (_get, (f"{SVC['cart']}/carts/{customer_id}/", request), {}),
+        (_get, (f"{SVC['product']}/products/", request), {"params": {"page_size": 500}, "cache_ttl": 10}),
+    ]
+    cart, products_payload = _parallel_call(calls, max_workers=2)
     product_map = {b.get("id"): b for b in _list_data(products_payload) if isinstance(b, dict) and b.get("id") is not None}
 
     cart_items = []
@@ -536,7 +608,7 @@ def order_pay(request, order_id):
         method_id = request.POST.get("payment_method_id")
         amount = request.POST.get("payment_amount", "").strip() or str(order.get("total_amount", 0))
         if not method_id:
-            methods_payload = _get(f"{SVC['pay']}/payment-methods/", request) or []
+            methods_payload = _get(f"{SVC['pay']}/payment-methods/", request, cache_ttl=60) or []
             return render(request, "order_pay.html", {
                 "order": order, "order_id": order_id, "payment_methods": _list_data(methods_payload),
                 "error": "Vui lòng chọn phương thức thanh toán.",
@@ -565,12 +637,12 @@ def order_pay(request, order_id):
             return redirect("order_list")
         err_payload = _response_error(r, "pay-service không phản hồi")
         err = err_payload.get("error") if isinstance(err_payload, dict) else err_payload
-        methods_payload = _get(f"{SVC['pay']}/payment-methods/", request) or []
+        methods_payload = _get(f"{SVC['pay']}/payment-methods/", request, cache_ttl=60) or []
         return render(request, "order_pay.html", {
             "order": order, "order_id": order_id, "payment_methods": _list_data(methods_payload), "error": err,
         })
 
-    methods_payload = _get(f"{SVC['pay']}/payment-methods/", request) or []
+    methods_payload = _get(f"{SVC['pay']}/payment-methods/", request, cache_ttl=60) or []
     return render(request, "order_pay.html", {
         "order": order, "order_id": order_id, "payment_methods": _list_data(methods_payload),
     })
@@ -661,7 +733,7 @@ def catalog_view(request):
         "product_types": "product_types",
     }
     params = _list_query_params(request)
-    payload = _get(f"{SVC['product']}/{endpoint_map[active_tab]}/", request, params=params)
+    payload = _get(f"{SVC['product']}/{endpoint_map[active_tab]}/", request, params=params, cache_ttl=300)
     pagination = _pagination_context(payload, request, extra_query={"tab": active_tab})
 
     tab_labels = {
@@ -702,7 +774,7 @@ def ai_chat_proxy(request):
     for attempt in range(1, 4):
         try:
             # Cho request AI thời gian dài hơn vì lần đầu có thể load model.
-            r = requests.post(recommender_url, json=body, timeout=90)
+            r = SESSION.post(recommender_url, json=body, timeout=90)
             return JsonResponse(r.json(), status=r.status_code)
         except requests.exceptions.Timeout as e:
             last_error = e

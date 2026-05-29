@@ -90,3 +90,19 @@ CSRF_COOKIE_SAMESITE = "Lax"  # Lax to allow redirects from external sites
 CSRF_TRUSTED_ORIGINS = (
     os.environ.get("CSRF_TRUSTED_ORIGINS", "").split() if os.environ.get("CSRF_TRUSTED_ORIGINS") else []
 )
+
+# ── Cache (Redis via django-redis) ──────────────────────────────────────────
+REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/1")
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {"max_connections": 50},
+        },
+    }
+}
+
+# Session backend uses cache (Redis) for shared sessions across workers
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"

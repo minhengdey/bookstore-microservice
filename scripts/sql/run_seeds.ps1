@@ -30,21 +30,28 @@ if (-not $psql) {
     exit 1
 }
 
-$dbs = @(
-    'customer_db', 'catalog_db', 'book_db', 'staff_db', 'cart_db',
-    'order_db', 'pay_db', 'ship_db', 'manager_db', 'comment_rate_db', 'recommender_db'
+$seeds = @(
+    @{ Db = 'customer_db';     File = '01_customer_db_seed.sql' },
+    @{ Db = 'catalog_db';      File = '02_catalog_db_seed.sql' },
+    @{ Db = 'product_db';      File = '12_product_db_seed.sql' },
+    @{ Db = 'book_db';         File = '03_book_db_seed.sql' },
+    @{ Db = 'staff_db';        File = '04_staff_db_seed.sql' },
+    @{ Db = 'cart_db';         File = '05_cart_db_seed.sql' },
+    @{ Db = 'order_db';        File = '06_order_db_seed.sql' },
+    @{ Db = 'pay_db';          File = '07_pay_db_seed.sql' },
+    @{ Db = 'ship_db';         File = '08_ship_db_seed.sql' },
+    @{ Db = 'manager_db';      File = '09_manager_db_seed.sql' },
+    @{ Db = 'comment_rate_db'; File = '10_comment_rate_db_seed.sql' },
+    @{ Db = 'recommender_db';  File = '11_recommender_db_seed.sql' }
 )
 
-$i = 1
-foreach ($db in $dbs) {
-    $pattern = Join-Path $SqlDir ("{0:D2}_*_seed.sql" -f $i)
-    $file = Get-ChildItem $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($file) {
-        Write-Host "[$db] $($file.Name)"
-        & $psql -U postgres -d $db -f $file.FullName
-        if ($LASTEXITCODE -ne 0) { Write-Host "Loi khi chay $($file.Name)"; exit $LASTEXITCODE }
+foreach ($seed in $seeds) {
+    $file = Join-Path $SqlDir $seed.File
+    if (Test-Path $file) {
+        Write-Host "[$($seed.Db)] $($seed.File)"
+        & $psql -U postgres -d $seed.Db -f $file
+        if ($LASTEXITCODE -ne 0) { Write-Host "Loi khi chay $($seed.File)"; exit $LASTEXITCODE }
     }
-    $i++
 }
 
-Write-Host "Xong. Da chay seed cho $($dbs.Count) database."
+Write-Host "Xong. Da chay seed cho $($seeds.Count) database."

@@ -1,6 +1,8 @@
 services:
   db:
     image: postgres:15-alpine
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
@@ -292,6 +294,15 @@ services:
       - NEO4J_AUTH=neo4j/password123
     volumes:
       - ./neo4j_data:/data
+    networks:
+      - bookstore-net
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
     networks:
       - bookstore-net
 
