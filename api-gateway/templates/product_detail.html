@@ -9,7 +9,24 @@
 
 <div class="product-detail-grid">
     <div class="product-image-large">
+        {% if product.image_url %}
+        <img src="{{ product.image_url }}" alt="{{ product.name }}"
+            style="width:100%; height:100%; object-fit:cover; display:block; border-radius: inherit;">
+        {% elif product.category and product.category.name == 'Electronics' %}
+        📱
+        {% elif product.category and product.category.name == 'Home Appliances' %}
+        🏠
+        {% elif product.category and product.category.name == 'Fashion' %}
+        👗
+        {% elif product.category and product.category.name == 'Beauty & Personal Care' %}
+        💄
+        {% elif product.category and product.category.name == 'Sports & Outdoors' %}
+        🏃
+        {% elif product.category and product.category.name == 'Grocery & Daily Essentials' %}
+        🛒
+        {% else %}
         🛍️
+        {% endif %}
     </div>
 
     <div class="product-info">
@@ -74,7 +91,18 @@
         {% for item in recommendations %}
         <a href="/products/{{ item.id }}/" style="text-decoration: none; color: inherit;">
             <div class="recommendation-card">
-                <div class="recommendation-image">📦</div>
+                <div class="recommendation-image">
+                    {% if item.image_url %}
+                    <img src="{{ item.image_url }}" alt="{{ item.name }}"
+                        style="width:100%; height:100%; object-fit:cover; display:block;">
+                    {% elif item.category and item.category.name == 'Electronics' %}📱
+                    {% elif item.category and item.category.name == 'Home Appliances' %}🏠
+                    {% elif item.category and item.category.name == 'Fashion' %}👗
+                    {% elif item.category and item.category.name == 'Beauty & Personal Care' %}💄
+                    {% elif item.category and item.category.name == 'Sports & Outdoors' %}🏃
+                    {% elif item.category and item.category.name == 'Grocery & Daily Essentials' %}🛒
+                    {% else %}📦{% endif %}
+                </div>
                 <div class="recommendation-content">
                     <div style="font-size: 0.9rem; font-weight: 600; color: var(--primary); margin-bottom: 8px;">Sản
                         phẩm liên quan</div>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" role="img" aria-label="Grocery and daily essentials">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff7d8"/>
+      <stop offset="100%" stop-color="#e9ffe8"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="400" rx="36" fill="url(#bg)"/>
+  <path d="M232 138h136l-14 124H246z" fill="#ffffff" opacity="0.96" stroke="#c9d69e" stroke-width="6"/>
+  <path d="M262 138c0-24 16-40 38-40s38 16 38 40" fill="none" stroke="#78ab4d" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="292" cy="198" r="18" fill="#fb6f92" opacity="0.9"/>
+  <circle cx="330" cy="198" r="18" fill="#8ecf58" opacity="0.9"/>
+  <circle cx="309" cy="230" r="18" fill="#ffb84d" opacity="0.9"/>
+  <rect x="242" y="276" width="116" height="16" rx="8" fill="#bfd79e"/>
+  <text x="300" y="345" text-anchor="middle" fill="#6c7d42" font-family="Arial, sans-serif" font-size="30" font-weight="700">Grocery</text>
+</svg>

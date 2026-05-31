@@ -102,7 +102,9 @@ class InternalClient:
         request_body = ""
         if "json" in kwargs:
             import json
-            request_body = json.dumps(kwargs["json"])
+            request_body = json.dumps(kwargs["json"], separators=(",", ":"), sort_keys=True)
+            kwargs["data"] = request_body
+            kwargs.pop("json", None)
         elif "content" in kwargs:
             request_body = kwargs["content"] if isinstance(kwargs["content"], str) else kwargs["content"].decode()
 

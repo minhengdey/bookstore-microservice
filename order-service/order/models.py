@@ -105,3 +105,6 @@ from common.outbox import AbstractOutboxEvent
 class OrderOutbox(AbstractOutboxEvent):
     class Meta:
         db_table = "order_outbox"
+        indexes = [
+            models.Index(fields=["status", "created_at"]),
+        ]

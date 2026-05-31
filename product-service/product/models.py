@@ -16,6 +16,7 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.CharField(max_length=10, default="VND")
     sku = models.CharField(max_length=50, unique=True, null=True, blank=True)
+    image_url = models.CharField(max_length=1000, blank=True, default="")
     attributes = models.JSONField(default=dict)
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20, default="active")

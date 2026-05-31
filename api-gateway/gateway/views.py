@@ -417,6 +417,7 @@ def product_list(request):
             "sku":       request.POST.get("sku", ""),
             "price":     request.POST.get("price"),
             "category_id": request.POST.get("category_id"),
+            "image_url": request.POST.get("image_url", "").strip(),
         }
         r = _post(f"{SVC['product']}/products/", json=payload, request=request)
         if r is not None and r.status_code == 201:

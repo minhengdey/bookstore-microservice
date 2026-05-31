@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" role="img" aria-label="Fashion">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fde6f1"/>
+      <stop offset="100%" stop-color="#fef3d6"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="400" rx="36" fill="url(#bg)"/>
+  <path d="M235 110l65 45 65-45 40 40-25 40v130H220V190l-25-40z" fill="#ffffff" opacity="0.95" stroke="#f3b4ca" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M300 155c-18 0-34-14-34-32 0-12 7-21 18-21 8 0 14 5 16 11 2-6 8-11 16-11 11 0 18 9 18 21 0 18-16 32-34 32z" fill="#fb6f92" opacity="0.7"/>
+  <rect x="242" y="282" width="116" height="16" rx="8" fill="#d89bb0"/>
+  <text x="300" y="345" text-anchor="middle" fill="#8b4b67" font-family="Arial, sans-serif" font-size="30" font-weight="700">Fashion</text>
+</svg>

@@ -13,16 +13,27 @@
     {% for p in recommendations %}
     <div class="recommendation-card">
         <div class="recommendation-image">
-            {% if p.category_name == 'Phone' %}📱
-            {% elif p.category_name == 'Laptop' %}💻
-            {% elif p.category_name == 'Fashion' %}👕
-            {% elif p.category_name == 'Book' %}📖
-            {% elif p.category_name == 'Cosmetic' %}💄
-            {% elif p.category_name == 'Food' %}🍎
+            {% if p.image_url %}
+            <img src="{{ p.image_url }}" alt="{{ p.name }}"
+                style="width:100%; height:100%; object-fit:cover; display:block;">
+            {% elif p.category and p.category.name == 'Electronics' %}📱
+            {% elif p.category and p.category.name == 'Home Appliances' %}🏠
+            {% elif p.category and p.category.name == 'Fashion' %}👗
+            {% elif p.category and p.category.name == 'Beauty & Personal Care' %}💄
+            {% elif p.category and p.category.name == 'Sports & Outdoors' %}🏃
+            {% elif p.category and p.category.name == 'Grocery & Daily Essentials' %}🛒
             {% else %}📦{% endif %}
         </div>
         <div class="recommendation-content">
-            <div class="recommendation-category">{{ p.category_name }}</div>
+            <div class="recommendation-category">
+                {% if p.category and p.category.name %}
+                {{ p.category.name }}
+                {% elif p.category_name %}
+                {{ p.category_name }}
+                {% else %}
+                Sản phẩm
+                {% endif %}
+            </div>
             <h4 class="recommendation-name">{{ p.name }}</h4>
             <div class="recommendation-price">{{ p.price }}₫</div>
             <div class="recommendation-actions">

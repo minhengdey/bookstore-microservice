@@ -25,4 +25,7 @@ if [ -d /app/common ]; then
 fi
 python manage.py makemigrations app --no-input
 python manage.py migrate --no-input
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
 exec python manage.py runserver 0.0.0.0:8000

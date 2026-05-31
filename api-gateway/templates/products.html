@@ -4,7 +4,8 @@
     <h2 class="page-title">Sản phẩm</h2>
     {% if can_manage_products %}
     <div style="display: flex; gap: 10px;">
-        <button onclick="document.getElementById('add-form').style.display='block'" class="btn btn-success">Thêm sản phẩm</button>
+        <button onclick="document.getElementById('add-form').style.display='block'" class="btn btn-success">Thêm sản
+            phẩm</button>
     </div>
     {% endif %}
 </div>
@@ -24,7 +25,8 @@
             <select id="category_id" name="category_id">
                 <option value="">Tất cả danh mục</option>
                 {% for cat in categories %}
-                <option value="{{ cat.id }}" {% if cat.id|stringformat:"s" == category_id %}selected{% endif %}>{{ cat.name }}</option>
+                <option value="{{ cat.id }}" {% if cat.id|stringformat:"s"==category_id %}selected{% endif %}>{{
+                    cat.name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -58,8 +60,13 @@
                 <input type="number" name="category_id" required>
             </div>
             <div class="full">
+                <label>URL ảnh</label>
+                <input type="text" name="image_url" placeholder="/static/product-images/electronics.svg">
+            </div>
+            <div class="full">
                 <button type="submit" class="btn btn-primary">Lưu sản phẩm</button>
-                <button type="button" onclick="document.getElementById('add-form').style.display='none'" class="btn btn-secondary">Hủy</button>
+                <button type="button" onclick="document.getElementById('add-form').style.display='none'"
+                    class="btn btn-secondary">Hủy</button>
             </div>
         </div>
     </form>
@@ -72,6 +79,7 @@
             <thead>
                 <tr>
                     <th>ID</th>
+                    <th>Ảnh</th>
                     <th>Tên sản phẩm</th>
                     <th>Giá</th>
                     <th>Danh mục</th>
@@ -82,13 +90,32 @@
                 {% for p in products %}
                 <tr>
                     <td>{{ p.id }}</td>
-                    <td><a href="/products/{{ p.id }}/" style="font-weight: 600; color: var(--primary);">{{ p.name }}</a></td>
+                    <td>
+                        <div
+                            style="width: 54px; height: 54px; border-radius: 14px; overflow: hidden; background: linear-gradient(135deg, var(--primary-light), var(--secondary-light)); display:flex; align-items:center; justify-content:center; border: 1px solid var(--border);">
+                            {% if p.image_url %}
+                            <img src="{{ p.image_url }}" alt="{{ p.name }}"
+                                style="width:100%; height:100%; object-fit:cover; display:block;">
+                            {% else %}
+                            <span style="font-size: 1.4rem;">📦</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td><a href="/products/{{ p.id }}/" style="font-weight: 600; color: var(--primary);">{{ p.name
+                            }}</a></td>
                     <td>{{ p.price }}₫</td>
-                    <td>{{ p.category_name|default:"Chưa phân loại" }}</td>
+                    <td>
+                        {% if p.category and p.category.name %}
+                        {{ p.category.name }}
+                        {% else %}
+                        {{ p.category_name|default:"Chưa phân loại" }}
+                        {% endif %}
+                    </td>
                     <td>
                         <a href="/products/{{ p.id }}/" class="btn btn-secondary btn-sm">Xem</a>
                         {% if can_manage_products %}
-                        <form method="POST" action="/products/{{ p.id }}/delete/" style="display:inline;" onsubmit="return confirm('Xóa sản phẩm này?')">
+                        <form method="POST" action="/products/{{ p.id }}/delete/" style="display:inline;"
+                            onsubmit="return confirm('Xóa sản phẩm này?')">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
                         </form>
@@ -99,13 +126,14 @@
             </tbody>
         </table>
     </div>
-    
+
     {% if products_pagination %}
     <div style="margin-top: 20px; display: flex; justify-content: center; gap: 8px;">
         {% if products_pagination.prev_page %}
         <a href="{{ products_pagination.query_for_prev }}" class="btn btn-secondary btn-sm">Trang trước</a>
         {% endif %}
-        <span style="padding: 6px 12px; font-size: 0.9rem;">Trang {{ products_pagination.page }} / {{ products_pagination.total_pages }}</span>
+        <span style="padding: 6px 12px; font-size: 0.9rem;">Trang {{ products_pagination.page }} / {{
+            products_pagination.total_pages }}</span>
         {% if products_pagination.next_page %}
         <a href="{{ products_pagination.query_for_next }}" class="btn btn-secondary btn-sm">Trang sau</a>
         {% endif %}

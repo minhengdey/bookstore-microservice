@@ -48,9 +48,9 @@ class Command(BaseCommand):
                     with transaction.atomic():
                         payment = Payment.objects.create(
                             order_id=order_id,
-                            amount=amount,
-                            payment_method="credit_card",
-                            payment_status=PaymentStatus.SUCCESS,
+                            payment_amount=amount,
+                            payment_method=None,
+                            payment_status=PaymentStatus.COMPLETED,
                             shipping_status=ShippingStatus.PENDING
                         )
                         

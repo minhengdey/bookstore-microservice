@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" role="img" aria-label="Home appliances">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff0d9"/>
+      <stop offset="100%" stop-color="#ffe7ef"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="400" rx="36" fill="url(#bg)"/>
+  <rect x="225" y="96" width="150" height="200" rx="24" fill="#ffffff" opacity="0.95" stroke="#f0c28f" stroke-width="6"/>
+  <circle cx="300" cy="180" r="48" fill="#fb6f92" opacity="0.18"/>
+  <rect x="262" y="132" width="76" height="92" rx="18" fill="#fb6f92" opacity="0.5"/>
+  <rect x="240" y="250" width="120" height="16" rx="8" fill="#e6a86f"/>
+  <text x="300" y="345" text-anchor="middle" fill="#8b5e3c" font-family="Arial, sans-serif" font-size="30" font-weight="700">Home</text>
+</svg>

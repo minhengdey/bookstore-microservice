@@ -14,7 +14,7 @@ INSERT INTO orders (id, customer_id, order_date, status, shipping_fee, discount_
 (2, 2, NOW(), 'delivered', 25000, 0, 2355000, 1, 'Đơn chăm sóc cá nhân và tiện ích'),
 (3, 3, NOW(), 'processing', 25000, 50000, 1665000, 1, 'Đơn mua đồ thể thao và tiêu dùng');
 
-INSERT INTO order_items (id, order_id, book_id, quantity, unit_price, discount) VALUES
+INSERT INTO order_items (id, order_id, product_id, quantity, unit_price, discount) VALUES
 (1, 1, 1, 1, 1890000, 0),
 (2, 1, 4, 1, 6990000, 0),
 (3, 1, 11, 1, 390000, 0),
@@ -33,8 +33,9 @@ INSERT INTO invoices (id, order_id, created_date, due_date, description, status,
 INSERT INTO coupons (id, customer_id, order_id, coupon_code, discount_value, is_percentage, expiry_date, status) VALUES
 (1, 1, NULL, 'WELCOME01', 15, true, CURRENT_DATE + 30, 'active');
 
-SELECT setval(pg_get_serial_sequence('discounts', 'id'), 2);
-SELECT setval(pg_get_serial_sequence('orders', 'id'), 3);
-SELECT setval(pg_get_serial_sequence('order_items', 'id'), 7);
-SELECT setval(pg_get_serial_sequence('invoices', 'id'), 3);
-SELECT setval(pg_get_serial_sequence('coupons', 'id'), 1);
+SELECT setval(pg_get_serial_sequence('discounts', 'id'), COALESCE((SELECT MAX(id) FROM discounts), 1));
+SELECT setval(pg_get_serial_sequence('orders', 'id'), COALESCE((SELECT MAX(id) FROM orders), 1));
+SELECT setval(pg_get_serial_sequence('order_items', 'id'), COALESCE((SELECT MAX(id) FROM order_items), 1));
+SELECT setval(pg_get_serial_sequence('order_discounts', 'id'), COALESCE((SELECT MAX(id) FROM order_discounts), 1));
+SELECT setval(pg_get_serial_sequence('invoices', 'id'), COALESCE((SELECT MAX(id) FROM invoices), 1));
+SELECT setval(pg_get_serial_sequence('coupons', 'id'), COALESCE((SELECT MAX(id) FROM coupons), 1));
