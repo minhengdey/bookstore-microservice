@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.conf import settings
-import requests, logging
+import requests, logging, hmac, hashlib, time as _time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -8,11 +8,96 @@ import time
 from urllib.parse import urlencode
 from collections import defaultdict
 from django.core.cache import cache
+import os
+from datetime import datetime
 
 from .permissions import _role, _entity_id, require_roles, require_customer_or_staff, customer_can_only_own
 
 logger = logging.getLogger(__name__)
 SVC = settings.SERVICE_URLS
+
+# Internal service credentials
+_INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "internal-dev-token")
+_INTERNAL_SIGNING_SECRET = os.environ.get("INTERNAL_SIGNING_SECRET", "internal-signing-secret")
+_SERVICE_NAME = os.environ.get("SERVICE_NAME", "api-gateway")
+
+# ── Format helpers (dùng trong views, không cần custom template filter) ───────
+
+ORDER_STATUS_VI = {
+    "pending_payment": "Chờ thanh toán",
+    "pending":         "Chờ xử lý",
+    "confirmed":       "Đã xác nhận",
+    "processing":      "Đang xử lý",
+    "shipped":         "Đang giao",
+    "delivered":       "Đã giao",
+    "cancelled":       "Đã hủy",
+    "refunded":        "Đã hoàn tiền",
+    "failed":          "Thất bại",
+    "paid":            "Đã thanh toán",
+    "failed_payment":  "Thanh toán thất bại",
+}
+
+PRODUCT_STATUS_VI = {
+    "active":        "Đang bán",
+    "inactive":      "Ngừng bán",
+    "out_of_stock":  "Hết hàng",
+}
+
+
+def _fmt_vnd(value):
+    """1890000 → '1.890.000₫'"""
+    try:
+        amount = float(value)
+        return f"{int(amount):,}".replace(",", ".") + "₫"
+    except (TypeError, ValueError):
+        return f"{value}₫" if value else "0₫"
+
+
+def _fmt_date(value):
+    """'2026-05-31T07:28:06.992173' → '31/05/2026 07:28'"""
+    if not value:
+        return "—"
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y %H:%M")
+    s = str(value).strip()
+    for fmt, length in (
+        ("%Y-%m-%dT%H:%M:%S.%f", 26),
+        ("%Y-%m-%dT%H:%M:%S",    19),
+        ("%Y-%m-%d %H:%M:%S.%f", 26),
+        ("%Y-%m-%d %H:%M:%S",    19),
+        ("%Y-%m-%d",             10),
+    ):
+        try:
+            dt = datetime.strptime(s[:length], fmt)
+            return dt.strftime("%d/%m/%Y %H:%M")
+        except ValueError:
+            continue
+    return s
+
+
+def _fmt_order(order):
+    """Enrich một order dict với các field đã format."""
+    if not isinstance(order, dict):
+        return order
+    status_raw = order.get("status", "")
+    return {
+        **order,
+        "order_date_fmt":   _fmt_date(order.get("order_date")),
+        "total_amount_fmt": _fmt_vnd(order.get("total_amount", 0)),
+        "status_vi":        ORDER_STATUS_VI.get(status_raw, status_raw.replace("_", " ").title() if status_raw else "—"),
+    }
+
+
+def _fmt_product(p):
+    """Enrich một product dict với price đã format."""
+    if not isinstance(p, dict):
+        return p
+    status_raw = p.get("status", "active")
+    return {
+        **p,
+        "price_fmt":  _fmt_vnd(p.get("price", 0)),
+        "status_vi":  PRODUCT_STATUS_VI.get(status_raw, status_raw),
+    }
 
 # Simple request cache
 _req_cache = {}
@@ -379,7 +464,7 @@ def home(request):
             "total_orders": 0,
             "user": user,
             "is_customer": True,
-            "recommendations": recommendations,
+            "recommendations": [_fmt_product(r) for r in recommendations],
         })
 
     if role not in ("staff", "manager"):
@@ -439,7 +524,7 @@ def product_list(request):
             if product_id is not None:
                 _track_behavior_event(request, customer_id, product_id, "search")
     return render(request, "products.html", {
-        "products": _list_data(products_payload),
+        "products": [_fmt_product(p) for p in _list_data(products_payload)],
         "products_pagination": products_pagination,
         "categories": categories,
         "search_query": search_query,
@@ -477,8 +562,8 @@ def product_detail(request, product_id):
 
     recommendations = _recommendation_products(request, customer_id, limit=6) if customer_id else []
     return render(request, "product_detail.html", {
-        "product": product,
-        "recommendations": recommendations,
+        "product": _fmt_product(product),
+        "recommendations": [_fmt_product(r) for r in recommendations],
         "is_customer": role == "customer",
         "customer_id": customer_id,
         "error": error,
@@ -651,6 +736,31 @@ def order_pay(request, order_id):
 
 # ── Orders ────────────────────────────────────────────────────────────────────
 
+def _enrich_orders_with_customer_name(request, orders):
+    """Fetch username cho từng customer_id trong danh sách đơn hàng (batch, parallel)."""
+    if not orders:
+        return orders
+    # Lấy tập hợp customer_id duy nhất
+    customer_ids = list({o.get("customer_id") for o in orders if o.get("customer_id") is not None})
+    if not customer_ids:
+        return orders
+    # Fetch song song dùng internal signed request
+    calls = [
+        (_get_internal, (f"{SVC['user']}/internal/users/{cid}/",), {"cache_ttl": 60})
+        for cid in customer_ids
+    ]
+    results = _parallel_call(calls, max_workers=min(8, len(calls)))
+    id_to_name = {}
+    for cid, data in zip(customer_ids, results):
+        if isinstance(data, dict) and data.get("username"):
+            id_to_name[cid] = data["username"]
+    # Gắn customer_name vào mỗi order
+    enriched = []
+    for order in orders:
+        cid = order.get("customer_id")
+        enriched.append({**order, "customer_name": id_to_name.get(cid)})
+    return enriched
+
 def order_list(request):
     role = _role(request)
     if not role:
@@ -663,8 +773,10 @@ def order_list(request):
         return render(request, "orders.html", {"orders": [], "order_success_msg": success_msg})
     success_msg = request.session.pop("order_success", None)
     orders_payload = _get(f"{SVC['order']}/orders/", request, params=_list_query_params(request))
+    orders = _list_data(orders_payload)
+    orders = _enrich_orders_with_customer_name(request, orders)
     return render(request, "orders.html", {
-        "orders": _list_data(orders_payload),
+        "orders": orders,
         "orders_pagination": _pagination_context(orders_payload, request),
         "can_manage": True,
         "order_success_msg": success_msg,
@@ -678,10 +790,14 @@ def customer_orders(request, customer_id):
     params = _list_query_params(request)
     params["customer_id"] = customer_id
     orders_payload = _get(f"{SVC['order']}/orders/", request, params=params)
+    orders = _list_data(orders_payload)
+    orders = _enrich_orders_with_customer_name(request, orders)
+    customer_name = orders[0].get("customer_name") if orders else None
     return render(request, "orders.html", {
-        "orders": _list_data(orders_payload),
+        "orders": orders,
         "orders_pagination": _pagination_context(orders_payload, request),
         "customer_id": customer_id,
+        "customer_name": customer_name,
         "order_success_msg": success_msg,
     })
 

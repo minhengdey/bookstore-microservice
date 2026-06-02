@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block content %}
 <div style="margin-bottom: 24px;">
     <a href="/products/" class="slide-in-left"
@@ -32,21 +33,24 @@
     <div class="product-info">
         <h1 class="product-title">{{ product.name }}</h1>
         <div class="product-price-large">
-            {{ product.price }}₫
+            {{ product.price|vnd }}
         </div>
 
         <div class="card" style="padding: 20px;">
             <h3>Chi tiết sản phẩm</h3>
-            <p style="margin: 15px 0; color: var(--text-secondary); line-height: 1.6;">{{
-                product.description|default:"Không có mô tả" }}</p>
+            <p style="margin: 15px 0; color: var(--text-secondary); line-height: 1.6;">
+                {% if product.description %}{{ product.description }}{% else %}Không có mô tả{% endif %}
+            </p>
 
             <div class="product-specs">
                 <div class="spec-item">
                     <strong>SKU:</strong> {{ product.sku|default:"—" }}
                 </div>
                 <div class="spec-item">
-                    <strong>Trạng thái:</strong> <span class="badge badge-success">{{ product.status|default:"Active"
-                        }}</span>
+                    <strong>Trạng thái:</strong>
+                    <span class="badge {% if product.status == 'active' %}badge-success{% else %}badge-warning{% endif %}">
+                        {% if product.status == 'active' %}Đang bán{% elif product.status == 'inactive' %}Ngừng bán{% elif product.status == 'out_of_stock' %}Hết hàng{% else %}{{ product.status|default:"Đang bán" }}{% endif %}
+                    </span>
                 </div>
             </div>
 
@@ -107,7 +111,7 @@
                     <div style="font-size: 0.9rem; font-weight: 600; color: var(--primary); margin-bottom: 8px;">Sản
                         phẩm liên quan</div>
                     <div class="recommendation-name">{{ item.name }}</div>
-                    <div class="recommendation-price">{{ item.price }}₫</div>
+                    <div class="recommendation-price">{{ item.price|vnd }}</div>
                 </div>
             </div>
         </a>

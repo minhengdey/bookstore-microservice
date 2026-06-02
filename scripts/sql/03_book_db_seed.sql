@@ -20,4 +20,4 @@ INSERT INTO book_images (book_id, image_url, is_primary) VALUES (1, '/static/boo
 INSERT INTO book_conditions (book_id, format, format_price, book_condition) VALUES (1, 'Paperback', 72000, 'New'), (2, 'Paperback', 68000, 'New'), (3, 'Paperback', 89000, 'New'), (4, 'Paperback', 108000, 'New'), (5, 'Paperback', 99000, 'New');
 INSERT INTO book_languages (book_id, language_name) VALUES (1, 'Tiếng Việt'), (2, 'Tiếng Việt'), (3, 'Tiếng Việt'), (4, 'Tiếng Việt'), (5, 'Tiếng Việt');
 
-SELECT setval(pg_get_serial_sequence('books', 'id'), 5);
+SELECT setval(pg_get_serial_sequence('books', 'id'), COALESCE((SELECT MAX(id) FROM books), 1));

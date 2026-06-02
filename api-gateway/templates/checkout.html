@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block content %}
 <h1 class="page-title">📦 Xác nhận đơn hàng</h1>
 
@@ -24,15 +25,15 @@
                 <td><span class="badge">{{ item.id }}</span></td>
                 <td>Sản phẩm #{{ item.product_id }}</td>
                 <td>{{ item.quantity }}</td>
-                <td>{{ item.unit_price }}₫</td>
-                <td>{{ item.quantity }} × {{ item.unit_price }}₫</td>
+                <td>{{ item.unit_price|vnd }}</td>
+                <td>{{ item.quantity }} × {{ item.unit_price|vnd }}</td>
             </tr>
             {% endfor %}
             </tbody>
         </table>
     </div>
     <div class="summary-row">
-        <span class="summary-total">Tổng: {{ cart.total_price }}₫</span>
+        <span class="summary-total">Tổng: {{ cart.total_price|vnd }}</span>
     </div>
     <form method="POST">
         {% csrf_token %}

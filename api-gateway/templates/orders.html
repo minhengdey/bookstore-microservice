@@ -1,6 +1,7 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block content %}
-<h1 class="page-title">📋 Đơn hàng{% if customer_id %} – Khách #{{ customer_id }}{% else %} – Tất cả{% endif %}</h1>
+<h1 class="page-title">📋 Đơn hàng{% if customer_name %} – {{ customer_name }}{% elif customer_id %} – Khách #{{ customer_id }}{% else %} – Tất cả{% endif %}</h1>
 
 {% if order_success_msg %}
 <div class="alert alert-success">
@@ -32,15 +33,21 @@
                 {% for order in orders %}
                 <tr>
                     <td><span class="badge">{{ order.id }}</span></td>
-                    <td>#{{ order.customer_id }}</td>
-                    <td>{{ order.order_date|default:"—" }}</td>
+                    <td>
+                        {% if order.customer_name %}
+                            {{ order.customer_name }}
+                        {% else %}
+                            #{{ order.customer_id }}
+                        {% endif %}
+                    </td>
+                    <td>{{ order.order_date|format_date }}</td>
                     <td>
                         <span
                             class="badge {% if order.status == 'delivered' %}badge-success{% elif order.status == 'cancelled' %}badge-danger{% else %}badge-warning{% endif %}">
-                            {{ order.status }}
+                            {{ order.status|vi_status }}
                         </span>
                     </td>
-                    <td><strong>{{ order.total_amount }}</strong></td>
+                    <td><strong>{{ order.total_amount|vnd }}</strong></td>
                 </tr>
                 {% endfor %}
             </tbody>

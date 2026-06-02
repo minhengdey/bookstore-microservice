@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block content %}
 <h1 class="page-title">🤖 Sản phẩm đề xuất cho bạn</h1>
 <p style="color:var(--text-secondary);margin-bottom:24px;font-size:0.95rem;">Dựa trên lịch sử xem và mua sắm của bạn, hệ
@@ -35,7 +36,7 @@
                 {% endif %}
             </div>
             <h4 class="recommendation-name">{{ p.name }}</h4>
-            <div class="recommendation-price">{{ p.price }}₫</div>
+            <div class="recommendation-price">{{ p.price|vnd }}</div>
             <div class="recommendation-actions">
                 <a href="/products/{{ p.id }}/" class="btn btn-secondary btn-sm"
                     style="flex: 1; text-align: center;">Chi tiết</a>

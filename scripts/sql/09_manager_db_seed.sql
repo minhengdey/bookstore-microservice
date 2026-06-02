@@ -37,6 +37,6 @@ INSERT INTO stock_movement_logs (id, movement_id, action, description, created_d
 INSERT INTO stock_transfers (id, from_warehouse_id, to_warehouse_id, book_id, quantity, transfer_date, admin_id, status) VALUES
 (1, 1, 2, 1, 20, NOW(), 1, 'completed');
 
-SELECT setval(pg_get_serial_sequence('warehouses', 'id'), 2);
-SELECT setval(pg_get_serial_sequence('suppliers', 'id'), 2);
-SELECT setval(pg_get_serial_sequence('purchase_orders', 'id'), 1);
+SELECT setval(pg_get_serial_sequence('warehouses', 'id'), COALESCE((SELECT MAX(id) FROM warehouses), 1));
+SELECT setval(pg_get_serial_sequence('suppliers', 'id'), COALESCE((SELECT MAX(id) FROM suppliers), 1));
+SELECT setval(pg_get_serial_sequence('purchase_orders', 'id'), COALESCE((SELECT MAX(id) FROM purchase_orders), 1));

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
     <h2 class="page-title">Sản phẩm</h2>
@@ -25,8 +26,7 @@
             <select id="category_id" name="category_id">
                 <option value="">Tất cả danh mục</option>
                 {% for cat in categories %}
-                <option value="{{ cat.id }}" {% if cat.id|stringformat:"s"==category_id %}selected{% endif %}>{{
-                    cat.name }}</option>
+                <option value="{{ cat.id }}" {% if cat.id|stringformat:"s" == category_id %}selected{% endif %}>{{ cat.name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -103,7 +103,7 @@
                     </td>
                     <td><a href="/products/{{ p.id }}/" style="font-weight: 600; color: var(--primary);">{{ p.name
                             }}</a></td>
-                    <td>{{ p.price }}₫</td>
+                    <td>{{ p.price|vnd }}</td>
                     <td>
                         {% if p.category and p.category.name %}
                         {{ p.category.name }}

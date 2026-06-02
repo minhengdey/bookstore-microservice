@@ -11,4 +11,4 @@ INSERT INTO recommendation_logs (id, customer_id, product_ids, created_at, strat
 (3, 3, '[8, 12, 7]', NOW(), 'hybrid'),
 (4, 1, '[2, 5, 7]', NOW(), 'trending');
 
-SELECT setval(pg_get_serial_sequence('recommendation_logs', 'id'), 4);
+SELECT setval(pg_get_serial_sequence('recommendation_logs', 'id'), COALESCE((SELECT MAX(id) FROM recommendation_logs), 1));

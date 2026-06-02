@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block content %}
 <h1 class="page-title">💳 Thanh toán đơn hàng #{{ order_id }}</h1>
 
@@ -7,8 +8,8 @@
 {% if order %}
 <div class="card">
     <h2>Thông tin đơn</h2>
-    <p><strong>Mã đơn:</strong> #{{ order.id }} &nbsp;|&nbsp; <strong>Trạng thái:</strong> {{ order.status }}</p>
-    <p><strong>Tổng tiền:</strong> {{ order.total_amount }}₫</p>
+    <p><strong>Mã đơn:</strong> #{{ order.id }} &nbsp;|&nbsp; <strong>Trạng thái:</strong> {{ order.status|vi_status }}</p>
+    <p><strong>Tổng tiền:</strong> {{ order.total_amount|vnd }}</p>
 </div>
 
 <div class="card">

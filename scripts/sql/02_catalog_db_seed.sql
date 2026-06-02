@@ -27,7 +27,7 @@ INSERT INTO publishers (id, publisher_name, contact_name, address, phone, websit
 (2, 'NXB Kim Đồng', 'Liên hệ', 'Hà Nội', '02438221304', ''),
 (3, 'NXB Hội Nhà văn', '', 'Hà Nội', '', '');
 
-SELECT setval(pg_get_serial_sequence('authors', 'id'), 3);
-SELECT setval(pg_get_serial_sequence('categories', 'id'), 4);
-SELECT setval(pg_get_serial_sequence('genres', 'id'), 4);
-SELECT setval(pg_get_serial_sequence('publishers', 'id'), 3);
+SELECT setval(pg_get_serial_sequence('authors', 'id'), COALESCE((SELECT MAX(id) FROM authors), 1));
+SELECT setval(pg_get_serial_sequence('categories', 'id'), COALESCE((SELECT MAX(id) FROM categories), 1));
+SELECT setval(pg_get_serial_sequence('genres', 'id'), COALESCE((SELECT MAX(id) FROM genres), 1));
+SELECT setval(pg_get_serial_sequence('publishers', 'id'), COALESCE((SELECT MAX(id) FROM publishers), 1));

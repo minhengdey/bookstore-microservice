@@ -81,3 +81,16 @@ class Transaction(models.Model):
 
     class Meta:
         db_table = "transactions"
+
+
+class DLQEvent(models.Model):
+    queue_name = models.CharField(max_length=255)
+    exchange = models.CharField(max_length=255, blank=True)
+    routing_key = models.CharField(max_length=255, blank=True)
+    body = models.JSONField()
+    error_message = models.TextField(blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+    replayed = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "dlq_events"

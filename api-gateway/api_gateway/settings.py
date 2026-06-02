@@ -63,7 +63,7 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ── JWT ────────────────────────────────────────────────────────────────────────
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bookstore-jwt-secret-dev")
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bookstore-super-secret-jwt-2026")
 
 # ── Service URLs ───────────────────────────────────────────────────────────────
 SERVICE_URLS = {

@@ -15,4 +15,4 @@ INSERT INTO book_reviews (id, book_id, customer_id, reviews_text, rating, create
 (7, 4, 2, 'Rất thích phong cách Murakami.', 4, NOW(), 'approved'),
 (8, 5, 3, 'Đáng suy ngẫm.', 4, NOW(), 'approved');
 
-SELECT setval(pg_get_serial_sequence('book_reviews', 'id'), 8);
+SELECT setval(pg_get_serial_sequence('book_reviews', 'id'), COALESCE((SELECT MAX(id) FROM book_reviews), 1));

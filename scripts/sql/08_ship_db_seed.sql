@@ -25,5 +25,5 @@ INSERT INTO shipping_statuses (id, shipping_id, status, description, updated_dat
 (1, 1, 'shipped', 'Đang giao', NOW()),
 (2, 2, 'delivered', 'Đã giao', NOW());
 
-SELECT setval(pg_get_serial_sequence('shipping_methods', 'id'), 2);
-SELECT setval(pg_get_serial_sequence('shippings', 'id'), 2);
+SELECT setval(pg_get_serial_sequence('shipping_methods', 'id'), COALESCE((SELECT MAX(id) FROM shipping_methods), 1));
+SELECT setval(pg_get_serial_sequence('shippings', 'id'), COALESCE((SELECT MAX(id) FROM shippings), 1));

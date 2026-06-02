@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block content %}
 <h2 style="margin-bottom:20px;font-size:1.4rem;font-weight:700;color:#0f172a;">
     {% if is_customer %}Cửa hàng trực tuyến{% else %}Quản lý hệ thống{% endif %}
@@ -71,7 +72,7 @@
                 {{ item.name }}
             </h4>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                <span style="font-weight: 700; color: var(--primary); font-size: 1.1rem;">{{ item.price }}₫</span>
+                <span style="font-weight: 700; color: var(--primary); font-size: 1.1rem;">{{ item.price|vnd }}</span>
                 <a href="/products/{{ item.id }}/" class="btn btn-primary btn-sm" style="border-radius: 20px;">Xem
                     nha</a>
             </div>

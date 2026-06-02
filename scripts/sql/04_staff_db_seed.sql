@@ -16,5 +16,5 @@ INSERT INTO inventory_staff (id, user_id, storage_code, department, position, ro
 (2, 2, 'STF002', 'Kho', 'Nhân viên kho', 'staff'),
 (3, 3, 'STF003', 'Kho', 'Quản lý', 'manager');
 
-SELECT setval(pg_get_serial_sequence('staff_users', 'id'), 3);
-SELECT setval(pg_get_serial_sequence('inventory_staff', 'id'), 3);
+SELECT setval(pg_get_serial_sequence('staff_users', 'id'), COALESCE((SELECT MAX(id) FROM staff_users), 1));
+SELECT setval(pg_get_serial_sequence('inventory_staff', 'id'), COALESCE((SELECT MAX(id) FROM inventory_staff), 1));

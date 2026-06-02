@@ -1,0 +1,70 @@
+from django import template
+from datetime import datetime
+
+register = template.Library()
+
+# Bản đồ trạng thái đơn hàng → tiếng Việt
+ORDER_STATUS_MAP = {
+    "pending_payment": "Chờ thanh toán",
+    "pending":         "Chờ xử lý",
+    "confirmed":       "Đã xác nhận",
+    "processing":      "Đang xử lý",
+    "shipped":         "Đang giao",
+    "delivered":       "Đã giao",
+    "cancelled":       "Đã hủy",
+    "refunded":        "Đã hoàn tiền",
+    "failed":          "Thất bại",
+}
+
+
+@register.filter
+def vi_status(value):
+    """Dịch trạng thái đơn hàng sang tiếng Việt."""
+    if not value:
+        return "—"
+    return ORDER_STATUS_MAP.get(str(value), str(value).replace("_", " ").title())
+
+
+@register.filter
+def format_date(value):
+    """
+    Chuyển chuỗi ISO datetime (2026-05-31T07:28:06.992173) thành
+    định dạng dễ đọc: 31/05/2026 07:28
+    """
+    if not value:
+        return "—"
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y %H:%M")
+    s = str(value).strip()
+    # Thử parse ISO format theo thứ tự từ chi tiết nhất đến đơn giản nhất
+    for fmt, length in (
+        ("%Y-%m-%dT%H:%M:%S.%f", 26),
+        ("%Y-%m-%dT%H:%M:%S",    19),
+        ("%Y-%m-%d %H:%M:%S.%f", 26),
+        ("%Y-%m-%d %H:%M:%S",    19),
+        ("%Y-%m-%d",             10),
+    ):
+        try:
+            dt = datetime.strptime(s[:length], fmt)
+            return dt.strftime("%d/%m/%Y %H:%M")
+        except ValueError:
+            continue
+    return s
+
+
+@register.filter
+def vnd(value):
+    """
+    Format số thành tiền VND có dấu phân cách nghìn.
+    Ví dụ: 1500000 → 1.500.000₫
+    """
+    try:
+        amount = float(value)
+        # Nếu là số nguyên, không hiển thị phần thập phân
+        if amount == int(amount):
+            formatted = f"{int(amount):,}".replace(",", ".")
+        else:
+            formatted = f"{amount:,.0f}".replace(",", ".")
+        return f"{formatted}₫"
+    except (TypeError, ValueError):
+        return f"{value}₫" if value else "0₫"

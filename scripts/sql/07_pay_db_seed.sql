@@ -23,7 +23,7 @@ INSERT INTO customer_payment_methods (id, customer_id, payment_method_id, accoun
 (1, 1, 2, '***1234', true, true),
 (2, 2, 2, '***1234', false, true);
 
-SELECT setval(pg_get_serial_sequence('payment_methods', 'id'), 3);
-SELECT setval(pg_get_serial_sequence('payments', 'id'), 2);
-SELECT setval(pg_get_serial_sequence('transactions', 'id'), 2);
-SELECT setval(pg_get_serial_sequence('customer_payment_methods', 'id'), 2);
+SELECT setval(pg_get_serial_sequence('payment_methods', 'id'), COALESCE((SELECT MAX(id) FROM payment_methods), 1));
+SELECT setval(pg_get_serial_sequence('payments', 'id'), COALESCE((SELECT MAX(id) FROM payments), 1));
+SELECT setval(pg_get_serial_sequence('transactions', 'id'), COALESCE((SELECT MAX(id) FROM transactions), 1));
+SELECT setval(pg_get_serial_sequence('customer_payment_methods', 'id'), COALESCE((SELECT MAX(id) FROM customer_payment_methods), 1));

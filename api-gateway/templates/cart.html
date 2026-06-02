@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block content %}
 <h1 class="page-title">🛒 Giỏ hàng{% if request.session.user.role == 'customer' %} của tôi{% else %} – Khách #{{
     customer_id }}{% endif %}</h1>
@@ -11,7 +12,7 @@
         <div class="form-row">
             <select name="product_id" required style="flex:2;min-width:200px;">
                 <option value="">— Chọn sản phẩm —</option>
-                {% for p in products %}<option value="{{ p.id }}">{{ p.name }} — {{ p.price }}₫</option>{% endfor %}
+                {% for p in products %}<option value="{{ p.id }}">{{ p.name }} — {{ p.price|vnd }}</option>{% endfor %}
             </select>
             <input type="number" name="quantity" value="1" min="1" style="max-width:100px" required placeholder="SL">
             <button type="submit" class="btn btn-success">Thêm vào giỏ</button>
@@ -41,8 +42,8 @@
                     <td><a href="/products/{{ item.product_id }}/"
                             style="color:inherit;text-decoration:underline;">{{ item.product_name }}</a></td>
                     <td>{{ item.quantity }}</td>
-                    <td>{{ item.unit_price }}</td>
-                    <td>{{ item.line_total }}</td>
+                    <td>{{ item.unit_price|vnd }}</td>
+                    <td>{{ item.line_total|vnd }}</td>
                     <td>
                         <form method="POST" style="margin:0;">
                             {% csrf_token %}
@@ -57,7 +58,7 @@
         </table>
     </div>
     <div class="summary-row">
-        <span class="summary-total">Tổng: {{ cart.total_price }}₫</span>
+        <span class="summary-total">Tổng: {{ cart.total_price|vnd }}</span>
     </div>
     <div class="page-actions">
         <a href="/" class="btn btn-secondary">← Trang chủ</a>
