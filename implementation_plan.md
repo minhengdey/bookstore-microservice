@@ -237,44 +237,45 @@ An API Gateway (e.g., Kong, Traefik, or Envoy) sits in front of all services. It
 - CORS, routing, and unified TLS termination
 
 ## Phased Migration & Implementation Roadmap
-(unchanged from previous plan, now reflecting the nine‑service layout and new model fields.)
 
-### Phase 1 – Auth & User Services
-- Implement `AuthUser` with custom manager, `RefreshToken` table.
-- Implement `UserProfile` using `auth_user_id` as PK, add soft‑delete manager.
-- Migrate existing user data, drop duplicate columns.
-- Add API‑gateway JWT validation stub.
+### Phase 1 – Auth & User Services (Completed)
+### Phase 2 – Catalog Service (Completed)
+### Phase 3 – Inventory Service (Completed)
+### Phase 4 – Order Service (Completed)
+### Phase 5 – Payment & Shipping Services (Completed)
+### Phase 6 – Notification Service (Completed)
+### Phase 7 – Recommendation Service (Completed)
 
-### Phase 2 – Catalog Service
-- Add `Brand`, `Category` (with `level`), `Product`, `ProductVariant` (including `is_active`).
-- Add `ProductImage`, `Review` (unique per customer‑product). 
-- Add `pgvector` extension and `ProductEmbedding` model.
+---
 
-### Phase 3 – Inventory Service
-- Implement `Inventory` with `version` optimistic lock.
-- Implement `StockReservation` with `expires_at` and background release worker.
+### Phase 8D – Recommendation MLOps (Current)
 
-### Phase 4 – Order Service
-- Implement cart, order, order item snapshots, promotion application, `OrderStatusHistory`, and saga orchestration events.
+**Goal:** Transform the Recommendation Platform into a true production-grade MLOps ecosystem. Instead of generic infrastructure, this phase focuses entirely on automating the deployment, monitoring, A/B testing, and lifecycle of the BiLSTM models.
 
-### Phase 5 – Payment & Shipping Services
-- Implement extended payment statuses, `idempotency_key`, and `RefreshToken` handling.
-- Implement shipping tracking, outbox events.
+#### Proposed Changes:
 
-### Phase 6 – Notification Service
-- Implement `Notification` with `read_at` and indexes.
+##### 1. Advanced Model Registry & Deployment
+- **`ModelVersion` Expansion**: Add `deployed_at` and `rollback_target`.
+- **A/B Testing Router**: Implement a deterministic routing mechanism (`hash(user_id) % 100`) within the `RecommendationPipeline` to split traffic between models based on their `rollout_percentage`.
+- **Rollback API**: Implement `POST /api/v1/models/rollback` to instantly downgrade a degraded model without restarting any containers.
 
-### Phase 7 – Recommendation Service
-- Deploy embedding storage with pgvector, recommendation result table, Redis cache, event consumers.
+##### 2. Inference & Online Metrics Tracking
+- **`InferenceMetric`**: Track `latency_ms`, `candidate_count`, and `recommendation_count` per request to instantly spot if a new model version is too heavy.
+- **`RecommendationFeedback`**: Track exact user interactions (`impression`, `clicked`, `purchased`) explicitly tied to a `recommendation_id` and `model_version_id`.
+- **Metric Aggregation**: Create functions to calculate live Click-Through Rate (CTR), Conversion Rate (CVR), and Revenue Attribution per model version.
 
-### Phase 8 – Infrastructure
-- Deploy API Gateway, RabbitMQ/Kafka, Redis, PostgreSQL per service.
-- Configure OpenTelemetry (Jaeger/Tempo) collection.
-- Finalise outbox & saga workers, health‑checks, CI/CD pipelines.
+##### 3. Drift Detection & Auto-Retraining
+- **`model_drift_worker`**: Implement a scheduled Django management command that compares the live interaction distribution (e.g., categories viewed) against the baseline distribution recorded during model training.
+- **Event Trigger**: If drift exceeds a threshold, or if CTR drops significantly, the system will automatically publish a `model.retrain.requested` event to the `recommendation_events` RabbitMQ exchange.
+
+## User Review Required
+> [!IMPORTANT]
+> **A/B Testing Hash**: Using `hash(user_id) % 100` ensures a consistent experience for logged-in users. For guest users (`anonymous_id`), we will apply the exact same hashing logic. Is this acceptable?
+
+> [!WARNING]
+> **Drift Baseline**: To compare live data against training data, the `ModelVersion` needs to store the baseline distribution (e.g., a JSON snapshot of category frequencies). I will add a `baseline_distribution` JSON field to the model.
 
 ## Verification Plan
-- **Automated Tests** for each service covering the new fields, idempotency, TTL release, tracing propagation, and outbox state transitions.
-- **Manual Checks** via Postman/Swagger: authentication flow with refresh tokens, profile CRUD, product hierarchy queries, inventory reservation expiry, order saga success/failure paths, payment refund flows, notification read status, recommendation vector search.
-- **Observability**: Verify trace IDs appear in Jaeger, logs contain `correlation_id`, and outbox events move through PUBLISHED state.
-
-*Please review the updated plan and confirm to start Phase 1 implementation.*
+- **A/B Testing**: Send requests with different `user_id`s and verify that they are routed to `BiLSTM v3` and `BiLSTM v4` according to an 90/10 split.
+- **Feedback Loop**: Simulate a flow: `get_personal` -> log `impression` -> log `clicked` -> log `purchased`, and verify the Revenue Attribution increments correctly for that specific `model_version_id`.
+- **Rollback**: Trigger the rollback API and verify traffic instantly reverts to the stable version.

@@ -1,4 +1,124 @@
 services:
+  catalog-db:
+    image: postgres:15-alpine
+    ports:
+      - "55439:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME_CATALOG:-catalog_db}
+    volumes:
+      - catalog_db_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  inventory-db:
+    image: postgres:15-alpine
+    ports:
+      - "55440:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME_INVENTORY:-inventory_db}
+    volumes:
+      - inventory_db_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  order-db:
+    image: postgres:15-alpine
+    ports:
+      - "55441:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME_ORDER:-order_db}
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  payment-db:
+    image: postgres:15-alpine
+    ports:
+      - "55442:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME_PAYMENT:-payment_db}
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  notification-db:
+    image: postgres:15-alpine
+    ports:
+      - "55443:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME_NOTIFICATION:-notification_db}
+    volumes:
+      - notification_db_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  interaction-db:
+    image: postgres:15-alpine
+    ports:
+      - "55444:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME_INTERACTION:-interaction_db}
+    volumes:
+      - interaction_db_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  order-redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   product-db:
     image: postgres:15-alpine
     ports:
@@ -35,41 +155,6 @@ services:
       timeout: 5s
       retries: 5
 
-  order-db:
-    image: postgres:15-alpine
-    ports:
-      - "55434:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${DB_NAME_ORDER:-order_db}
-    volumes:
-      - order_db_data:/var/lib/postgresql/data
-    networks:
-      - ecommerce-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  payment-db:
-    image: postgres:15-alpine
-    ports:
-      - "55435:5432"
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${DB_NAME_PAY:-pay_db}
-    volumes:
-      - payment_db_data:/var/lib/postgresql/data
-    networks:
-      - ecommerce-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   shipping-db:
     image: postgres:15-alpine
@@ -203,6 +288,156 @@ services:
     networks:
       - ecommerce-net
 
+  # ── Catalog service ───────────────────────────────────────────────────────
+  catalog-service:
+    build: ./catalog-service
+    ports:
+      - "${PORT_CATALOG:-8010}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_CATALOG:-catalog-service-dev-key}
+      - DB_NAME=${DB_NAME_CATALOG:-catalog_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=catalog-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+      - SERVICE_NAME=catalog-service
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,cart-service,shipping-service,user-service,recommender-ai-service
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
+    networks:
+      - ecommerce-net
+
+  # ── Inventory service ─────────────────────────────────────────────────────
+  inventory-service:
+    build: ./inventory-service
+    ports:
+      - "${PORT_INVENTORY:-8013}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_INVENTORY:-inventory-service-dev-key}
+      - DB_NAME=${DB_NAME_INVENTORY:-inventory_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=inventory-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+      - SERVICE_NAME=inventory-service
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service
+      - RESERVATION_TTL_MINUTES=${RESERVATION_TTL_MINUTES:-15}
+      - LOW_STOCK_THRESHOLD=${LOW_STOCK_THRESHOLD:-10}
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
+    networks:
+      - ecommerce-net
+
+  # ── Order service ─────────────────────────────────────────────────────────
+  order-service:
+    build: ./order-service
+    ports:
+      - "${PORT_ORDER:-8014}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_ORDER:-order-service-dev-key}
+      - DB_NAME=${DB_NAME_ORDER:-order_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=order-db
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_URL=redis://order-redis:6379/0
+      - PYTHONPATH=/app/common
+      - SERVICE_NAME=order-service
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
+      - CATALOG_SERVICE_URL=http://catalog-service:8000
+      - PAYMENT_SERVICE_URL=http://payment-service:8000
+    depends_on:
+      order-db:
+        condition: service_healthy
+      order-redis:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
+    networks:
+      - ecommerce-net
+
+  # ── Payment service ───────────────────────────────────────────────────────
+  payment-service:
+    build: ./payment-service
+    ports:
+      - "${PORT_PAYMENT:-8015}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_PAYMENT:-payment-service-dev-key}
+      - DB_NAME=${DB_NAME_PAYMENT:-payment_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=payment-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+      - SERVICE_NAME=payment-service
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
+      - PAYMENT_PROVIDER=MOCK
+    depends_on:
+      payment-db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
+    networks:
+      - ecommerce-net
+
+  # ── Notification service ──────────────────────────────────────────────────
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "${PORT_NOTIFICATION:-8016}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_NOTIFICATION:-notification-service-dev-key}
+      - DB_NAME=${DB_NAME_NOTIFICATION:-notification_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=notification-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+      - SERVICE_NAME=notification-service
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service,notification-service
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
+    depends_on:
+      notification-db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
+    networks:
+      - ecommerce-net
+
+  # ── Interaction service ───────────────────────────────────────────────────
+  interaction-service:
+    build: ./interaction-service
+    ports:
+      - "${PORT_INTERACTION:-8017}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_INTERACTION:-interaction-service-dev-key}
+      - DB_NAME=${DB_NAME_INTERACTION:-interaction_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=interaction-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+      - SERVICE_NAME=interaction-service
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service,notification-service,interaction-service,api-gateway
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
+    depends_on:
+      interaction-db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
+    networks:
+      - ecommerce-net
+
   # ── Product service (Consolidated Catalog & Product) ────────────────────────
   product-service:
     build: ./product-service
@@ -240,7 +475,7 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
     healthcheck:
-      test: rabbitmq-diagnostics check_port_connectivity
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 10s
       retries: 12
@@ -285,49 +520,6 @@ services:
     networks:
       - ecommerce-net
 
-  order-service:
-    build: ./order-service
-    ports:
-      - "${PORT_ORDER:-8007}:8000"
-    environment:
-      - SECRET_KEY=${SECRET_KEY_ORDER:-order-service-dev-key}
-      - DB_NAME=${DB_NAME_ORDER:-order_db}
-      - DB_USER=${POSTGRES_USER:-postgres}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=order-db
-      - DB_PORT=${DB_PORT:-5432}
-      - PYTHONPATH=/app/common
-      - SERVICE_NAME=order-service
-      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service
-    depends_on:
-      order-db:
-        condition: service_healthy
-    volumes:
-      - ./common:/app/common
-    networks:
-      - ecommerce-net
-  # ── Payment / Shipping services ───────────────────────────────────────────
-  payment-service:
-    build: ./payment-service
-    ports:
-      - "${PORT_PAY:-8008}:8000"
-    environment:
-      - SECRET_KEY=${SECRET_KEY_PAY:-pay-service-dev-key}
-      - DB_NAME=${DB_NAME_PAY:-pay_db}
-      - DB_USER=${POSTGRES_USER:-postgres}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - DB_HOST=payment-db
-      - DB_PORT=${DB_PORT:-5432}
-      - PYTHONPATH=/app/common
-      - SERVICE_NAME=payment-service
-      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service
-    depends_on:
-      payment-db:
-        condition: service_healthy
-    volumes:
-      - ./common:/app/common
-    networks:
-      - ecommerce-net
 
   payment-worker:
     build: ./payment-service
@@ -444,10 +636,14 @@ services:
     depends_on:
       - auth-service
       - user-service
-      - product-service
-      - cart-service
+      - catalog-service
+      - inventory-service
       - order-service
       - payment-service
+      - notification-service
+      - interaction-service
+      - product-service
+      - cart-service
       - shipping-service
       - recommender-ai-service
       - api-gateway
@@ -490,6 +686,28 @@ services:
       - PYTHONPATH=/app/common
     depends_on:
       order-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+    restart: unless-stopped
+    volumes:
+      - ./common:/app/common
+
+  interaction-outbox-worker:
+    build: ./interaction-service
+    command: ["python", "manage.py", "relay_outbox"]
+    environment:
+      - SECRET_KEY=${SECRET_KEY_INTERACTION:-interaction-service-dev-key}
+      - DB_NAME=${DB_NAME_INTERACTION:-interaction_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=interaction-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+    depends_on:
+      interaction-db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -569,15 +787,65 @@ services:
     volumes:
       - ./common:/app/common
 
+  recommender-consumer:
+    build: ./recommender-ai-service
+    command: ["python", "manage.py", "consume_events"]
+    environment:
+      - SECRET_KEY=${SECRET_KEY_RECOMMENDER:-recommender-dev-key}
+      - DB_NAME=${DB_NAME_RECOMMENDER:-recommender_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=recommender-db
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_URL=redis://redis:6379/0
+      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password123}
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
+      - MODEL_SERVING_URL=http://model-serving-service:8000
+      - PYTHONPATH=/app/common
+    depends_on:
+      recommender-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+    restart: unless-stopped
+    volumes:
+      - ./recommender-ai-service/app/services/ai_engine/kb:/app/app/services/ai_engine/kb
+      - ./recommender-ai-service/data:/app/data
+
+  # ── Model Serving service ────────────────────────────────────────────────
+  model-serving-service:
+    build: ./model-serving-service
+    ports:
+      - "${PORT_MODEL_SERVING:-8019}:8000"
+    networks:
+      - ecommerce-net
+    restart: unless-stopped
+    # In a real environment, you might add:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
 networks:
   ecommerce-net:
     driver: bridge
 
 volumes:
-  product_db_data:
+  catalog_db_data:
+  inventory_db_data:
   cart_db_data:
   order_db_data:
   payment_db_data:
+  notification_db_data:
+  interaction_db_data:
+  product_db_data:
   shipping_db_data:
   user_db_data:
   recommender_db_data:

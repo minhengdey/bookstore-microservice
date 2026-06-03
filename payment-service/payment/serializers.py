@@ -1,25 +1,11 @@
 from rest_framework import serializers
-from .models import Payment, PaymentMethod, Refund, Transaction
 
-class PaymentMethodSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PaymentMethod
-        fields = "__all__"
+class CreatePaymentSerializer(serializers.Serializer):
+    order_id = serializers.UUIDField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    correlation_id = serializers.UUIDField()
+    idempotency_key = serializers.CharField(max_length=255, required=False)
 
-class RefundSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Refund
-        fields = "__all__"
-
-class TransactionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Transaction
-        fields = "__all__"
-
-class PaymentSerializer(serializers.ModelSerializer):
-    method_name = serializers.CharField(source="payment_method.method_name", read_only=True)
-    refunds = RefundSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Payment
-        fields = "__all__"
+class RefundPaymentSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=255)
+    idempotency_key = serializers.CharField(max_length=255, required=False)

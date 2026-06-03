@@ -1,41 +1,34 @@
 from rest_framework import serializers
-from .models import Order, OrderItem, OrderDiscount, Discount, Invoice, Coupon
+from order.models import Order, OrderItem, OrderSaga, OrderStatusHistory
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    subtotal = serializers.ReadOnlyField()
     class Meta:
         model = OrderItem
-        fields = ["id", "product_id", "quantity", "unit_price", "discount", "subtotal"]
+        exclude = ('order',)
 
-class OrderDiscountSerializer(serializers.ModelSerializer):
+class OrderSagaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = OrderDiscount
-        fields = ["discount_id", "applied_value"]
+        model = OrderSaga
+        fields = '__all__'
 
-class InvoiceSerializer(serializers.ModelSerializer):
+class OrderStatusHistorySerializer(serializers.ModelSerializer):
     class Meta:
-        model = Invoice
-        fields = "__all__"
+        model = OrderStatusHistory
+        fields = '__all__'
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
-    order_discounts = OrderDiscountSerializer(many=True, read_only=True)
-    invoice = InvoiceSerializer(read_only=True)
+    saga = OrderSagaSerializer(read_only=True)
+    history = OrderStatusHistorySerializer(many=True, read_only=True)
 
     class Meta:
         model = Order
-        fields = [
-            "id", "customer_id", "order_date", "status",
-            "shipping_fee", "discount_amount", "total_amount",
-            "notes", "items", "order_discounts", "invoice",
-        ]
+        fields = '__all__'
 
-class DiscountSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Discount
-        fields = "__all__"
+class CheckoutRequestSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    shipping_address = serializers.JSONField()
 
-class CouponSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Coupon
-        fields = "__all__"
+class CartItemSerializer(serializers.Serializer):
+    variant_id = serializers.UUIDField()
+    quantity = serializers.IntegerField(min_value=1)
