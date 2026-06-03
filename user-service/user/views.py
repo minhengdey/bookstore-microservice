@@ -1,65 +1,66 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from common.auth import require_auth, require_internal
-from .models import User, CustomerProfile, StaffProfile
+from .models import UserProfile, CustomerProfile, StaffProfile
 
 class UserProfileView(APIView):
     @require_internal
     def get(self, request, user_id=None):
         if user_id is None:
-            user_id = request.user_ctx["entity_id"]
+            user_id = request.user_ctx.get("entity_id") or request.user_ctx.get("user_id")
         
         try:
-            user = User.objects.get(id=user_id)
+            user = UserProfile.objects.get(auth_user_id=user_id)
             data = {
-                "id": user.id,
-                "email": user.email,
+                "auth_user_id": user.auth_user_id,
                 "role": user.role,
-                "username": user.username,
+                "full_name": user.full_name,
                 "phone": user.phone,
+                "gender": user.gender,
+                "birthday": user.birthday,
+                "avatar_url": user.avatar_url,
             }
             if user.role == "customer":
-                profile = CustomerProfile.objects.filter(user=user).first()
+                profile = CustomerProfile.objects.filter(user_profile=user).first()
                 if profile:
                     data["loyalty_points"] = profile.loyalty_points
             else:
-                profile = StaffProfile.objects.filter(user=user).first()
+                profile = StaffProfile.objects.filter(user_profile=user).first()
                 if profile:
                     data["department"] = profile.department
                     data["position"] = profile.position
             return Response(data)
-        except User.DoesNotExist:
-            return Response({"error": "User not found"}, status=404)
+        except UserProfile.DoesNotExist:
+            return Response({"error": "UserProfile not found"}, status=404)
 
     @require_internal
     def post(self, request, user_id=None):
-        # Create user from auth-service
         data = request.data
         try:
-            user = User.objects.create(
-                id=data["id"],
-                username=data["username"],
-                email=data["email"],
+            user = UserProfile.objects.create(
+                auth_user_id=data["auth_user_id"],
+                full_name=data.get("full_name", ""),
                 phone=data.get("phone", ""),
                 role=data.get("role", "customer")
             )
             if user.role == "customer":
-                CustomerProfile.objects.create(user=user)
+                CustomerProfile.objects.create(user_profile=user)
             else:
                 StaffProfile.objects.create(
-                    user=user, 
+                    user_profile=user, 
                     storage_code=data.get("storage_code", ""),
                     department=data.get("department", ""),
                     position=data.get("position", "")
                 )
-            return Response({"id": user.id}, status=201)
+            return Response({"id": user.auth_user_id, "auth_user_id": user.auth_user_id}, status=201)
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
     @require_internal
     def delete(self, request, user_id=None):
         try:
-            User.objects.filter(id=user_id).delete()
+            # This handles soft delete since we defined delete() in SoftDeleteModel
+            UserProfile.objects.filter(auth_user_id=user_id).first().delete()
             return Response(status=204)
         except Exception as e:
             return Response({"error": str(e)}, status=400)
@@ -69,23 +70,25 @@ class PublicUserProfileView(APIView):
     def get(self, request):
         user_id = request.user_id
         try:
-            user = User.objects.get(id=user_id)
+            user = UserProfile.objects.get(auth_user_id=user_id)
             data = {
-                "id": user.id,
-                "email": user.email,
+                "auth_user_id": user.auth_user_id,
                 "role": user.role,
-                "username": user.username,
+                "full_name": user.full_name,
                 "phone": user.phone,
+                "gender": user.gender,
+                "birthday": user.birthday,
+                "avatar_url": user.avatar_url,
             }
             if user.role == "customer":
-                profile = CustomerProfile.objects.filter(user=user).first()
+                profile = CustomerProfile.objects.filter(user_profile=user).first()
                 if profile:
                     data["loyalty_points"] = profile.loyalty_points
             else:
-                profile = StaffProfile.objects.filter(user=user).first()
+                profile = StaffProfile.objects.filter(user_profile=user).first()
                 if profile:
                     data["department"] = profile.department
                     data["position"] = profile.position
             return Response(data)
-        except User.DoesNotExist:
-            return Response({"error": "User not found"}, status=404)
+        except UserProfile.DoesNotExist:
+            return Response({"error": "UserProfile not found"}, status=404)

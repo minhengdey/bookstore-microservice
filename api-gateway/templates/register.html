@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Đăng ký – BookStore</title>
+    <title>Đăng ký – E-Commerce</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
@@ -17,6 +17,9 @@
         <div class="auth-card">
             <div class="auth-logo">📚</div>
             <h2 class="auth-title">Tạo tài khoản khách hàng</h2>
+            <p class="auth-card-subtitle">
+                Khu vực này chỉ mở cho khách hàng mới. Nhân viên và quản trị dùng trang đăng nhập theo vai trò.
+            </p>
 
             {% if error %}
             <div class="alert-error">
@@ -26,6 +29,10 @@
                 {% if error.error %}<div>✗ {{ error.error }}</div>{% endif %}
             </div>
             {% endif %}
+
+            <div class="auth-role-hint auth-role-hint--register">
+                Tài khoản đăng ký tại đây sẽ có vai trò mặc định là khách hàng.
+            </div>
 
             <form method="post" class="auth-form">
                 {% csrf_token %}
@@ -46,7 +53,7 @@
             </form>
 
             <div class="auth-footer">
-                Đã có tài khoản? <a href="/login/">Đăng nhập ngay →</a>
+                Đã có tài khoản? <a href="/login/">Đăng nhập theo vai trò →</a>
             </div>
         </div>
     </div>

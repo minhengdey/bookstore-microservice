@@ -1,7 +1,7 @@
 import os
 import re
 
-fpath = r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\bookstore-microservice\docs\CHUONG2_TAI_LIEU_DU_AN_BOOKSTORE_ECOM.md'
+fpath = r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\Ecommerce-microservice\docs\CHUONG2_TAI_LIEU_DU_AN_ECOMMERCE_ECOM.md'
 if os.path.exists(fpath):
     with open(fpath, 'r', encoding='utf-8') as f:
         content = f.read()

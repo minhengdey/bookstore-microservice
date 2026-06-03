@@ -156,7 +156,7 @@ class UserBehaviorPredictor:
         cats = np.array([
             self.encoders["category"].transform([c])[0]
             if c in self.encoders["category"].classes_ else 0
-            for c in self._series(df_user, "category", "books")
+            for c in self._series(df_user, "category", "products")
         ])
         devs = np.array([
             self.encoders["device"].transform([d])[0]

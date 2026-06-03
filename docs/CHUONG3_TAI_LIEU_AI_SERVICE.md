@@ -15,7 +15,7 @@ Theo cấu trúc được xác định, chương này bao gồm 5 phần chính:
 
 ### 3.1.1 Bài toán đặt ra
 
-Hệ thống E-commerce bán sách đối mặt với 3 thách thức cốt lõi về trải nghiệm người dùng:
+Hệ thống E-commerce đối mặt với 3 thách thức cốt lõi về trải nghiệm người dùng:
 
 - **Thách thức 1 — Cold Start:** Khách hàng mới chưa có lịch sử mua hàng, hệ thống không biết gợi ý gì phù hợp.
 - **Thách thức 2 — Behavior Drift:** Sở thích người dùng thay đổi theo thời gian. Một khách hàng từng mua sách kỹ thuật có thể chuyển sang quan tâm sách văn học sau vài tháng.
@@ -1381,7 +1381,7 @@ Dữ liệu này được lưu vào `BehaviorEvent` table và dùng để:
 
 ## 3.6 Tổng kết Chương 3
 
-Chương này đã trình bày đầy đủ kiến trúc và triển khai AI Service cho hệ thống E-commerce Bookstore:
+Chương này đã trình bày đầy đủ kiến trúc và triển khai AI Service cho hệ thống E-commerce Ecommerce:
 
 | Thành phần | Kết quả |
 |---|---|

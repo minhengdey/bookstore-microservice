@@ -39,7 +39,7 @@ Tài liệu này mô tả các yêu cầu cho 4 nhiệm vụ cải tiến hệ t
 5. WHEN `08_ship_db_seed.sql` được chạy, THE Seed_Script SHALL cập nhật sequence động cho các bảng: `shipping_methods`, `shippings`.
 6. WHEN `12_product_db_seed.sql` được chạy, THE Seed_Script SHALL cập nhật sequence động cho các bảng: `categories`, `products`.
 7. WHEN `02_catalog_db_seed.sql` được chạy, THE Seed_Script SHALL cập nhật sequence động cho các bảng: `authors`, `categories`, `genres`, `publishers`.
-8. WHEN `03_book_db_seed.sql` được chạy, THE Seed_Script SHALL cập nhật sequence động cho bảng: `books`.
+8. WHEN `03_product_db_seed.sql` được chạy, THE Seed_Script SHALL cập nhật sequence động cho bảng: `products`.
 9. WHEN `04_staff_db_seed.sql` được chạy, THE Seed_Script SHALL cập nhật sequence động cho các bảng: `staff_users`, `inventory_staff`.
 10. WHEN `05_cart_db_seed.sql` được chạy, THE Seed_Script SHALL cập nhật sequence động cho các bảng: `carts`, `cart_items`.
 11. WHEN `09_manager_db_seed.sql` được chạy, THE Seed_Script SHALL cập nhật sequence động cho các bảng: `warehouses`, `suppliers`, `purchase_orders`.

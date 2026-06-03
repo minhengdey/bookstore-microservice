@@ -1,6 +1,6 @@
-# CHƯƠNG 2: PHÁT TRIỂN HỆ THỐNG E-COMMERCE MICROSERVICES BOOKSTORE
+# CHƯƠNG 2: PHÁT TRIỂN HỆ THỐNG E-COMMERCE MICROSERVICES
 
-Chương này trình bày chi tiết và chuyên sâu về thiết kế kiến trúc phần mềm (Software Architecture Design) và quá trình xây dựng nền tảng hệ thống thương mại điện tử bán sách trực tuyến. Cốt lõi của hệ thống là luồng dữ liệu giao dịch tài chính phải đảm bảo tính nguyên tử (Atomicity), chịu tải cao (High Throughput) và độ trễ thấp. Để giải quyết bài toán tự động thu phóng (Auto-Scalability) và Tính sẵn sàng cao (High Availability), hệ thống từ bỏ hoàn toàn mô hình Monolith cổ điển để áp dụng kiến trúc phân tán Microservices.
+Chương này trình bày chi tiết và chuyên sâu về thiết kế kiến trúc phần mềm (Software Architecture Design) và quá trình xây dựng nền tảng hệ thống thương mại điện tử. Cốt lõi của hệ thống là luồng dữ liệu giao dịch tài chính phải đảm bảo tính nguyên tử (Atomicity), chịu tải cao (High Throughput) và độ trễ thấp. Để giải quyết bài toán tự động thu phóng (Auto-Scalability) và Tính sẵn sàng cao (High Availability), hệ thống từ bỏ hoàn toàn mô hình Monolith cổ điển để áp dụng kiến trúc phân tán Microservices.
 
 ## 2.1 Xác định yêu cầu hệ thống
 
@@ -112,7 +112,7 @@ graph TB
     style DATA fill:#2d132c,color:#e8e8f0
 ```
 
-*Hình 2.1: Kiến trúc tổng thể hệ thống Bookstore E-commerce Microservices*
+*Hình 2.1: Kiến trúc tổng thể hệ thống E-commerce Microservices*
 
 ### 2.2.1 Bounded Context (Miền giới hạn)
 
@@ -1141,7 +1141,7 @@ class OrderService:
 
                 # Bước 2: Gọi Product Service khóa tồn kho (synchronous — cần phản hồi ngay)
                 r = self.client.post(
-                    f"{BOOK_SERVICE_URL}/internal/reserve-stock/",
+                    f"{PRODUCT_SERVICE_URL}/internal/reserve-stock/",
                     json={"order_id": order.id, "items": items}
                 )
                 if r.status_code not in (200, 201):
@@ -2226,7 +2226,7 @@ class ImplicitCFEngine:
         self._W: np.ndarray | None = None   # User factors (users × K)
         self._H: np.ndarray | None = None   # Item factors (K × items)
         self._interactions = None            # CSR sparse matrix
-        self._meta: dict | None = None       # user_id_to_idx, idx_to_book_id mappings
+        self._meta: dict | None = None       # user_id_to_idx, idx_to_product_id mappings
 
     def recommend(self, customer_id: int, exclude_product_ids: set,
                   limit: int) -> list[tuple[int, float]]:

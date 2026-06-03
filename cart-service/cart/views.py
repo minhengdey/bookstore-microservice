@@ -25,7 +25,7 @@ def _forbidden_response():
 
 
 def _product_id_from_payload(data):
-    return int(data.get("product_id") or data["book_id"])
+    return int(data.get("product_id") or data["product_id"])
 
 
 def _serialize_cart(cart, response_status=status.HTTP_200_OK):

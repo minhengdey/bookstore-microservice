@@ -346,7 +346,7 @@ def _catalog_name_map(request, endpoint, field_name):
     return result
 
 
-def _hydrate_book_catalog_data(request, book):
+def _hydrate_book_catalog_data(request, product):
     calls = [
         (_catalog_name_map, (request, "authors", "author_name"), {}),
         (_catalog_name_map, (request, "genres", "genre_name"), {}),
@@ -355,10 +355,10 @@ def _hydrate_book_catalog_data(request, book):
     ]
     author_map, genre_map, publisher_map, category_map = _parallel_call(calls, max_workers=4)
     return {
-        "authors": [author_map.get(int(i), f"Author #{i}") for i in book.get("author_ids", [])],
-        "genres": [genre_map.get(int(i), f"Genre #{i}") for i in book.get("genre_ids", [])],
-        "publishers": [publisher_map.get(int(i), f"Publisher #{i}") for i in book.get("publisher_ids", [])],
-        "categories": [category_map.get(int(i), f"Category #{i}") for i in book.get("category_ids", [])],
+        "authors": [author_map.get(int(i), f"Author #{i}") for i in product.get("author_ids", [])],
+        "genres": [genre_map.get(int(i), f"Genre #{i}") for i in product.get("genre_ids", [])],
+        "publishers": [publisher_map.get(int(i), f"Publisher #{i}") for i in product.get("publisher_ids", [])],
+        "categories": [category_map.get(int(i), f"Category #{i}") for i in product.get("category_ids", [])],
     }
 
 
@@ -366,7 +366,7 @@ def _recommendation_products(request, customer_id, limit=6):
     payload = _get(f"{SVC['recommender']}/recommendations/{customer_id}/", request, params={"limit": limit}, cache_ttl=5)
     if not isinstance(payload, dict):
         return []
-    ids = payload.get("recommended_product_ids") or payload.get("recommended_book_ids") or []
+    ids = payload.get("recommended_product_ids") or payload.get("recommended_product_ids") or []
     products = []
     # Fetch product details in parallel
     calls = [(_get, (f"{SVC['product']}/products/{pid}/", request), {"cache_ttl": 30}) for pid in ids]
@@ -379,20 +379,31 @@ def _recommendation_products(request, customer_id, limit=6):
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
+_LOGIN_ROLES = {"customer", "staff", "admin"}
+
+
+def _login_role(request) -> str:
+    role = (request.POST.get("login_type") or request.GET.get("login_type") or "customer").strip().lower()
+    return role if role in _LOGIN_ROLES else "customer"
+
 def login_view(request):
     """Unified login page – customers and staff/managers."""
+    login_type = _login_role(request)
     if request.method == "GET":
-        return render(request, "login.html", {})
+        return render(request, "login.html", {"login_type": login_type})
 
     username    = request.POST.get("username", "").strip()
     password    = request.POST.get("password", "")
-    login_type  = request.POST.get("login_type", "customer")   # "customer" | "staff"
     error = None
 
     url = f"{SVC['auth']}/auth/login/"
 
     try:
-        r = requests.post(url, json={"username": username, "password": password}, timeout=5)
+        r = requests.post(
+            url,
+            json={"username": username, "password": password, "role": login_type},
+            timeout=5,
+        )
         if r.status_code == 200:
             data = r.json()
             request.session["access_token"]  = data["access"]
@@ -403,7 +414,7 @@ def login_view(request):
     except requests.exceptions.RequestException:
         error = "Auth service unavailable"
 
-    return render(request, "login.html", {"error": error})
+    return render(request, "login.html", {"error": error, "login_type": login_type})
 
 
 def logout_view(request):
@@ -487,7 +498,7 @@ def home(request):
     })
 
 
-# ── Books ─────────────────────────────────────────────────────────────────────
+# ── Products ─────────────────────────────────────────────────────────────────────
 
 def product_list(request):
     role = _role(request)
@@ -588,7 +599,7 @@ def view_cart(request, customer_id):
     error = None
     if request.method == "POST":
         action = request.POST.get("action", "add")
-        product_id = request.POST.get("product_id") or request.POST.get("book_id")
+        product_id = request.POST.get("product_id") or request.POST.get("product_id")
         if action == "remove":
             if product_id:
                 r = _delete(f"{SVC['cart']}/carts/{customer_id}/items/{int(product_id)}/", request)
@@ -625,7 +636,7 @@ def view_cart(request, customer_id):
 
     cart_items = []
     for item in (cart or {}).get("items", []):
-        bid = item.get("product_id", item.get("book_id"))
+        bid = item.get("product_id", item.get("product_id"))
         product = product_map.get(bid, {})
         unit_price = float(item.get("unit_price") or 0)
         qty = int(item.get("quantity") or 0)

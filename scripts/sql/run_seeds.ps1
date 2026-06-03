@@ -34,7 +34,6 @@ $seeds = @(
     @{ Db = 'customer_db';     File = '01_customer_db_seed.sql' },
     @{ Db = 'catalog_db';      File = '02_catalog_db_seed.sql' },
     @{ Db = 'product_db';      File = '12_product_db_seed.sql' },
-    @{ Db = 'book_db';         File = '03_book_db_seed.sql' },
     @{ Db = 'staff_db';        File = '04_staff_db_seed.sql' },
     @{ Db = 'cart_db';         File = '05_cart_db_seed.sql' },
     @{ Db = 'order_db';        File = '06_order_db_seed.sql' },

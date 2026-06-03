@@ -20,7 +20,7 @@ class GraphRepository:
     def append_behavior(
         self,
         customer_id: int,
-        book_id: int,
+        product_id: int,
         action: str,
         action_weight: float,
         category_id: int | None = None,
@@ -30,10 +30,10 @@ class GraphRepository:
         edges = data["edges"]
 
         u = f"user:{customer_id}"
-        p = f"product:{book_id}"
+        p = f"product:{product_id}"
 
         self._upsert_node(nodes, GraphNode(u, "User", {"customer_id": customer_id}))
-        self._upsert_node(nodes, GraphNode(p, "Product", {"book_id": book_id}))
+        self._upsert_node(nodes, GraphNode(p, "Product", {"product_id": product_id}))
 
         if category_id is not None:
             c = f"category:{category_id}"
@@ -70,8 +70,8 @@ class GraphRepository:
         ranked = sorted(product_scores.items(), key=lambda kv: kv[1], reverse=True)
         return dict(ranked[:top_k])
 
-    def explain(self, customer_id: int, book_id: int) -> str:
-        score = self.top_neighbor_products(customer_id, top_k=100).get(book_id, 0.0)
+    def explain(self, customer_id: int, product_id: int) -> str:
+        score = self.top_neighbor_products(customer_id, top_k=100).get(product_id, 0.0)
         if score <= 0:
             return "graph: no direct behavior edge"
         return f"graph: direct behavior weight={score:.2f}"

@@ -56,7 +56,7 @@ class Product(models.Model):
         db_table = "products"
 ```
 
-### 2.3.2 Book (Sub-domain)
+### 2.3.2 Product (Sub-domain)
 Thuộc tính sách được tổ chức trong trường `attributes` kiểu JSON của model `Product`, ví dụ như:
 ```json
 {
@@ -363,7 +363,7 @@ Hệ thống sử dụng PostgreSQL nhờ tính năng `JSONB` hỗ trợ lưu tr
 - DDD giúp chia tách ranh giới rõ ràng (Bounded Contexts) ngay từ đầu.
 - SAGA và Event-Driven (với RabbitMQ) là nền móng để giải quyết Distributed Transaction.
 """
-    with open(r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\bookstore-microservice\docs\CHUONG2_TAI_LIEU_DU_AN_BOOKSTORE_ECOM.md', 'w', encoding='utf-8') as f:
+    with open(r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\Ecommerce-microservice\docs\CHUONG2_TAI_LIEU_DU_AN_ECOMMERCE_ECOM.md', 'w', encoding='utf-8') as f:
         f.write(content)
 
 def write_ch3():
@@ -490,7 +490,7 @@ class RAGChatLLM:
         return "Xin chào, hệ thống hiện đang bận..."
 ```
 """
-    with open(r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\bookstore-microservice\docs\CHUONG3_TAI_LIEU_AI_SERVICE.md', 'w', encoding='utf-8') as f:
+    with open(r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\Ecommerce-microservice\docs\CHUONG3_TAI_LIEU_AI_SERVICE.md', 'w', encoding='utf-8') as f:
         f.write(content)
 
 def write_ch4():
@@ -608,7 +608,7 @@ Viết code:
       - ./scripts/init_databases.sql:/docker-entrypoint-initdb.d/init_databases.sql
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - Ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -650,7 +650,7 @@ Việc scale từng service diễn ra độc lập, không gặp hiện tượng
 - [x] Có Docker chạy được liên hoàn toàn khối CSDL và AI
 - [x] Có luồng đặt hàng (order $\\rightarrow$ payment $\\rightarrow$ shipping) qua RabbitMQ
 """
-    with open(r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\bookstore-microservice\docs\CHUONG4_TAI_LIEU_TICH_HOP_VA_TRIEN_KHAI.md', 'w', encoding='utf-8') as f:
+    with open(r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\Ecommerce-microservice\docs\CHUONG4_TAI_LIEU_TICH_HOP_VA_TRIEN_KHAI.md', 'w', encoding='utf-8') as f:
         f.write(content)
 
 write_ch2()

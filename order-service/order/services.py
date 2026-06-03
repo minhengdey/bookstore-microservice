@@ -6,7 +6,7 @@ from common.client import InternalClient
 
 logger = logging.getLogger(__name__)
 
-BOOK_SERVICE_URL = "http://product-service:8000"
+PRODUCT_SERVICE_URL = "http://product-service:8000"
 PAY_SERVICE_URL = "http://payment-service:8000"
 
 class OrderService:
@@ -73,7 +73,7 @@ class OrderService:
                 order = self._create_order_db(data)
                 
                 # Reserve stock synchronously WITH order_id
-                r = self.client.post(f"{BOOK_SERVICE_URL}/internal/reserve-stock/", json={"order_id": order.id, "items": items})
+                r = self.client.post(f"{PRODUCT_SERVICE_URL}/internal/reserve-stock/", json={"order_id": order.id, "items": items})
                 if r.status_code not in (200, 201):
                     err = r.json().get("error", "Stock reservation failed")
                     raise ValueError(err)
@@ -109,7 +109,7 @@ class OrderService:
 
     def _release_stock(self, order_id: int, items: list):
         try:
-            r = self.client.post(f"{BOOK_SERVICE_URL}/internal/release-stock/", json={"order_id": order_id, "items": items})
+            r = self.client.post(f"{PRODUCT_SERVICE_URL}/internal/release-stock/", json={"order_id": order_id, "items": items})
             if r.status_code not in (200, 201):
                 logger.error(f"Failed to release stock: {r.text}")
         except Exception as e:
@@ -123,7 +123,7 @@ class OrderService:
 
     def _get_product_price(self, product_id) -> float:
         try:
-            r = self.client.get(f"{BOOK_SERVICE_URL}/internal/products/{product_id}/")
+            r = self.client.get(f"{PRODUCT_SERVICE_URL}/internal/products/{product_id}/")
             if r.status_code == 200:
                 return float(r.json().get("price", 0))
         except Exception as e:

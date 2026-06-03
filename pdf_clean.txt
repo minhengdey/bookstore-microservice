@@ -306,7 +306,7 @@ Phát triển Hệ E-Commerce
 Microservices
 2.1 Xác định yêu cầu
 2.1.1 Functional Requirements
-Quản lý sản phẩm (đa domain: book, electronics, fashion)
+Quản lý sản phẩm (đa domain: product, electronics, fashion)
 Quản lý người dùng (admin, staff, customer)
 Giỏ hàng (cart)
 Đặt hàng (order)
@@ -335,7 +335,7 @@ Microservices
 Giao tiếp qua REST API
 2.3 Thiết kế Product Service (Django)
 2.3.1 Phân loại sản phẩm
-Book: giáo trình, tiểu thuyết
+Product: giáo trình, tiểu thuyết
 Electronics : mobile, laptop, tủ lạnh, điều hòa
 Fashion : áo, quần, giày
 2.3.2 Model tổng quát
@@ -348,8 +348,8 @@ stock = models . IntegerField ()
 category = models . ForeignKey ( Category , on_delete = models .
 CASCADE )
 2.3.3 Chi tiết theo domain
-Book
-class Book ( models . Model ):
+Product
+class Product ( models . Model ):
 product = models . OneToOneField ( Product , on_delete = models .
 CASCADE )
 author = models . CharField ( max_length =255)
@@ -484,7 +484,7 @@ Sinh viên xác định các lớp chính theo từng service:
 Product Service:
 Product
 Category
-Book
+Product
 Electronics
 Fashion
 User Service:
@@ -505,7 +505,7 @@ Ví dụ lớp Product:
 stock: int
 Bước 3: Xác định quan hệ (Relationships)
 Association: Product →Category
-Inheritance: Book, Electronics, Fashion kế thừa Product
+Inheritance: Product, Electronics, Fashion kế thừa Product
 Composition: Order chứa OrderItem
 Ký hiệu UML
 1..* (one-to-many)
@@ -545,7 +545,7 @@ price FLOAT ,
 stock INT ,
 category_id INT REFERENCES category (id)
 );
-CREATE TABLE book (
+CREATE TABLE product (
 product_id INT PRIMARY KEY ,
 author VARCHAR (255) ,
 isbn VARCHAR (20)

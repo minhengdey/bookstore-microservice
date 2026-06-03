@@ -5,11 +5,11 @@ Ví dụ goodbooks-10k: tải ratings.csv từ Kaggle, đặt vào thư mục r�
 
   python manage.py train_implicit_cf --ratings /path/to/ratings.csv
 
-Map book_id dataset → book_id local (book-service), nếu khác nhau:
+Map product_id dataset → product_id local (product-service), nếu khác nhau:
 
-  python manage.py train_implicit_cf --ratings ratings.csv --book-map book_id_map.json
+  python manage.py train_implicit_cf --ratings ratings.csv --product-map product_id_map.json
 
-**Cho web hiện tại (customer_id + book_id local):** dùng
+**Cho web hiện tại (customer_id + product_id local):** dùng
 
   python manage.py train_implicit_cf_local
 
@@ -71,7 +71,7 @@ class Command(BaseCommand):
             "--ratings",
             type=str,
             required=True,
-            help="Đường dẫn ratings.csv (user_id, book_id, rating)",
+            help="Đường dẫn ratings.csv (user_id, product_id, rating)",
         )
         parser.add_argument(
             "--user-col",
@@ -80,10 +80,10 @@ class Command(BaseCommand):
             help="Tên cột user (mặc định: user_id)",
         )
         parser.add_argument(
-            "--book-col",
+            "--product-col",
             type=str,
-            default="book_id",
-            help="Tên cột book (mặc định: book_id)",
+            default="product_id",
+            help="Tên cột product (mặc định: product_id)",
         )
         parser.add_argument(
             "--rating-col",
@@ -121,10 +121,10 @@ class Command(BaseCommand):
             help="Trọng số confidence = 1 + alpha * rating",
         )
         parser.add_argument(
-            "--book-map",
+            "--product-map",
             type=str,
             default="",
-            help="JSON map dataset_book_id → local_book_id (tùy chọn)",
+            help="JSON map dataset_product_id → local_product_id (tùy chọn)",
         )
         parser.add_argument(
             "--output-dir",
@@ -155,10 +155,10 @@ class Command(BaseCommand):
         )
 
         users = sorted({r[0] for r in rows})
-        books = sorted({r[1] for r in rows})
+        products = sorted({r[1] for r in rows})
         user_id_to_idx = {str(u): i for i, u in enumerate(users)}
-        item_id_to_idx = {b: j for j, b in enumerate(books)}
-        idx_to_book_id = list(books)
+        item_id_to_idx = {b: j for j, b in enumerate(products)}
+        idx_to_product_id = list(products)
 
         alpha = float(options["alpha"])
         row_ind, col_ind, data = [], [], []
@@ -169,7 +169,7 @@ class Command(BaseCommand):
             data.append(w)
 
         n_users = len(users)
-        n_items = len(books)
+        n_items = len(products)
         matrix = csr_matrix(
             (np.array(data, dtype=np.float64), (row_ind, col_ind)),
             shape=(n_users, n_items),
@@ -187,18 +187,18 @@ class Command(BaseCommand):
                 with open(p, encoding="utf-8") as f:
                     raw = json.load(f)
                 book_map = {str(k): int(v) for k, v in raw.items()}
-                self.stdout.write(f"Đã load book map: {len(book_map)} entries")
+                self.stdout.write(f"Đã load product map: {len(book_map)} entries")
             else:
-                self.stdout.write(self.style.WARNING(f"Không tìm thấy --book-map: {p}"))
+                self.stdout.write(self.style.WARNING(f"Không tìm thấy --product-map: {p}"))
 
         n_comp = save_nmf_model(
             matrix,
             user_id_to_idx,
-            idx_to_book_id,
+            idx_to_product_id,
             out_dir,
             extra_meta={
                 "source_ratings": str(ratings_path),
-                "dataset_book_id_to_local_book_id": book_map,
+                "dataset_product_id_to_local_product_id": book_map,
             },
             factors=int(options["factors"]),
             max_iter=int(options["max_iter"]),

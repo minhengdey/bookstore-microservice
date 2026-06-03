@@ -5,7 +5,7 @@ load tại runtime để trộn với co-purchase + behavior.
 Artifacts trong IMPLICIT_CF_DATA_DIR:
   - factors.npz        : W (users×K), H (K×items)
   - interactions.npz   : ma trận CSR đã train
-  - meta.json          : mapping id, optional dataset_book_id → local book_id
+  - meta.json          : mapping id, optional dataset_product_id → local product_id
 """
 from __future__ import annotations
 
@@ -66,9 +66,9 @@ class ImplicitCFEngine:
 
     def _local_id_for_col(self, col_idx: int) -> int:
         assert self._meta is not None
-        idx_to_book: list = self._meta["idx_to_book_id"]
+        idx_to_book: list = self._meta["idx_to_product_id"]
         ds_bid = int(idx_to_book[col_idx])
-        book_map: dict = self._meta.get("dataset_book_id_to_local_book_id") or {}
+        book_map: dict = self._meta.get("dataset_product_id_to_local_product_id") or {}
         raw = book_map.get(str(ds_bid), book_map.get(ds_bid))
         return int(raw) if raw is not None else ds_bid
 

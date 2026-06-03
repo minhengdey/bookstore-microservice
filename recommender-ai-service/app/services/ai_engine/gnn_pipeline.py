@@ -43,23 +43,23 @@ class GNNTrainer:
         cfg = cfg or GNNConfig()
         payload = build_graph_training_payload()
         users = payload["users"]
-        books = payload["books"]
+        products = payload["products"]
         edges = payload["user_book_edges"]
 
         user_to_idx = {uid: i for i, uid in enumerate(users)}
-        book_to_idx = {b["book_id"]: i for i, b in enumerate(books)}
-        if not users or not books or not edges:
+        book_to_idx = {b["product_id"]: i for i, b in enumerate(products)}
+        if not users or not products or not edges:
             empty_meta = {"user_to_idx": user_to_idx, "book_to_idx": book_to_idx, "training_loss": None}
             self.meta_path.write_text(json.dumps(empty_meta, ensure_ascii=False, indent=2), encoding="utf-8")
             return empty_meta
 
-        model = BipartiteGNN(n_users=len(users), n_books=len(books), hidden_dim=cfg.hidden_dim)
+        model = BipartiteGNN(n_users=len(users), n_books=len(products), hidden_dim=cfg.hidden_dim)
         optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
         positives = []
         for e in edges:
-            if e["user_id"] in user_to_idx and e["book_id"] in book_to_idx:
-                positives.append((user_to_idx[e["user_id"]], book_to_idx[e["book_id"]], float(e["weight"])))
+            if e["user_id"] in user_to_idx and e["product_id"] in book_to_idx:
+                positives.append((user_to_idx[e["user_id"]], book_to_idx[e["product_id"]], float(e["weight"])))
         if not positives:
             return {"user_to_idx": user_to_idx, "book_to_idx": book_to_idx, "training_loss": None}
 
@@ -69,7 +69,7 @@ class GNNTrainer:
             loss = torch.tensor(0.0)
             for u_idx, b_idx, w in positives:
                 pos_score = (u_emb[u_idx] * b_emb[b_idx]).sum()
-                neg_b_idx = torch.randint(0, len(books), (1,)).item()
+                neg_b_idx = torch.randint(0, len(products), (1,)).item()
                 neg_score = (u_emb[u_idx] * b_emb[neg_b_idx]).sum()
                 sample_loss = -torch.log(torch.sigmoid(pos_score - neg_score) + 1e-9) * w
                 loss = loss + sample_loss

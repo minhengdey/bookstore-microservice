@@ -2,16 +2,16 @@
 
 ## 1) Bootstrap
 - Ensure `.env` has `GRAPH_KB_PATH`, `GNN_ARTIFACT_DIR`, `AI_BOOTSTRAP_KB`.
-- Start stack: `docker compose up -d recommender-ai-service api-gateway book-service order-service`.
+- Start stack: `docker compose up -d recommender-ai-service api-gateway product-service order-service`.
 - Run migrations if needed: `python manage.py migrate`.
 
 ## 2) Product Seed (>=10)
-- Seed catalog and books:
-  - `python manage.py seed_mock --clear` in `book-service`.
-- Verify `/books/` returns at least 10 items.
+- Seed products:
+  - `python manage.py seed_mock --clear` in `product-service`.
+- Verify `/products/` returns at least 10 items.
 
 ## 3) Behavior + Graph
-- Send events: `POST /api/recommender/events/` with `customer_id`, `book_id`, `action`.
+- Send events: `POST /api/recommender/events/` with `customer_id`, `product_id`, `action`.
 - Verify graph stats: `GET /api/recommender/graph` has `nodes_count > 0` and `edges_count > 0`.
 
 ## 4) Train AI
@@ -24,7 +24,7 @@
 ## 5) Recommendation API
 - Call: `GET /recommendations/<customer_id>/?limit=10`
 - Verify response includes:
-  - `recommended_book_ids`
+  - `recommended_product_ids`
   - `recommendations[].score`
   - `recommendations[].explanation`
 
@@ -35,4 +35,4 @@
 ## 7) Web Verification
 - Login as customer on gateway.
 - Open `/recommendations/`.
-- Click books + add to cart, refresh recommendations, verify changes.
+- Click products + add to cart, refresh recommendations, verify changes.

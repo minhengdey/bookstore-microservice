@@ -1,5 +1,5 @@
 """
-Train NMF từ dữ liệu **thật** của hệ thống — khớp customer_id / book_id trên web:
+Train NMF từ dữ liệu **thật** của hệ thống — khớp customer_id / product_id trên web:
 
   - Bảng BehaviorEvent (recommender DB): view, cart, wishlist, …
   - GET order-service `/orders/metrics/` (AllowAny): lịch sử mua theo customer
@@ -55,7 +55,7 @@ def _fetch_order_metrics(base: str) -> list[dict]:
 
 
 class Command(BaseCommand):
-    help = "Train NMF từ behavior + đơn hàng (customer_id / book_id local)."
+    help = "Train NMF từ behavior + đơn hàng (customer_id / product_id local)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -73,7 +73,7 @@ class Command(BaseCommand):
             "--purchase-weight",
             type=float,
             default=_PURCHASE_EDGE_WEIGHT,
-            help="Trọng số cạnh (customer, book) từ đơn hàng",
+            help="Trọng số cạnh (customer, product) từ đơn hàng",
         )
         parser.add_argument(
             "--factors",
@@ -97,7 +97,7 @@ class Command(BaseCommand):
             "--min-nnz",
             type=int,
             default=8,
-            help="Tối thiểu số cạnh user–book để train (dưới ngưỡng sẽ cảnh báo)",
+            help="Tối thiểu số cạnh user–product để train (dưới ngưỡng sẽ cảnh báo)",
         )
 
     def handle(self, *args, **options):
@@ -107,12 +107,12 @@ class Command(BaseCommand):
         weights: dict[tuple[int, int], float] = defaultdict(float)
 
         # 1) Behavior
-        q = BehaviorEvent.objects.values("customer_id", "book_id").annotate(
+        q = BehaviorEvent.objects.values("customer_id", "product_id").annotate(
             total=Sum("action_weight")
         )
         for row in q:
             cid = int(row["customer_id"])
-            bid = int(row["book_id"])
+            bid = int(row["product_id"])
             weights[(cid, bid)] += float(row["total"] or 0.0)
 
         n_behavior = len(weights)
@@ -157,10 +157,10 @@ class Command(BaseCommand):
             return
 
         users = sorted({p[0] for p in weights})
-        books = sorted({p[1] for p in weights})
+        products = sorted({p[1] for p in weights})
         user_id_to_idx = {str(u): i for i, u in enumerate(users)}
-        item_id_to_idx = {b: j for j, b in enumerate(books)}
-        idx_to_book_id = list(books)
+        item_id_to_idx = {b: j for j, b in enumerate(products)}
+        idx_to_product_id = list(products)
 
         row_ind, col_ind, data = [], [], []
         for (u, b), w in weights.items():
@@ -171,7 +171,7 @@ class Command(BaseCommand):
             data.append(float(w))
 
         n_users = len(users)
-        n_items = len(books)
+        n_items = len(products)
         nnz = len(data)
         matrix = csr_matrix(
             (np.array(data, dtype=np.float64), (row_ind, col_ind)),
@@ -195,7 +195,7 @@ class Command(BaseCommand):
         n_comp = save_nmf_model(
             matrix,
             user_id_to_idx,
-            idx_to_book_id,
+            idx_to_product_id,
             out_dir,
             extra_meta={
                 "source": "local_behavior_and_orders",

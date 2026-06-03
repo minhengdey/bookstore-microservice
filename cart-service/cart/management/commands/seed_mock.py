@@ -1,6 +1,6 @@
 """
 Tạo dữ liệu mẫu: Cart, CartItem.
-Giả định customer-service đã seed (customer_id 1,2,3), book-service đã seed (book_id 1-5).
+Giả định user-service đã seed (customer_id 1,2,3), product-service đã seed (product_id 1-5).
 Chạy: python manage.py seed_mock
 """
 from decimal import Decimal
@@ -27,9 +27,9 @@ class Command(BaseCommand):
         for cid in [1, 2, 3]:
             cart = Cart.objects.create(customer_id=cid)
             if cid == 1:
-                CartItem.objects.create(cart=cart, book_id=1, quantity=2, unit_price=Decimal("72000"))
-                CartItem.objects.create(cart=cart, book_id=3, quantity=1, unit_price=Decimal("89000"))
+                CartItem.objects.create(cart=cart, product_id=1, quantity=2, unit_price=Decimal("72000"))
+                CartItem.objects.create(cart=cart, product_id=3, quantity=1, unit_price=Decimal("89000"))
             elif cid == 2:
-                CartItem.objects.create(cart=cart, book_id=2, quantity=1, unit_price=Decimal("68000"))
+                CartItem.objects.create(cart=cart, product_id=2, quantity=1, unit_price=Decimal("68000"))
 
         self.stdout.write(self.style.SUCCESS("Created 3 carts with sample items (customer 1,2,3)."))

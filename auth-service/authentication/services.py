@@ -272,7 +272,6 @@ class AuthService:
         role = normalize_role(data.get("role") or "customer")
         username = data.get("username", "").strip()
         email = data.get("email", "").strip().lower()
-        phone = data.get("phone", "")
         password = data.get("password", "")
 
         if AuthUser.objects.filter(username=username).exists():
@@ -284,60 +283,50 @@ class AuthService:
             user = AuthUser(
                 username=username,
                 email=email,
-                phone=phone,
-                role=role,
-                entity_role="manager" if role == "admin" else ("staff" if role == "staff" else ""),
+                is_staff=role in ("staff", "admin"),
+                is_superuser=role == "admin",
             )
             user.set_password(password)
             user.save()
 
         try:
-            profile = self._provision_profile(user, data, request_id=request_id)
+            profile = self._provision_profile(user, data, role, request_id=request_id)
         except AuthError as exc:
             user.delete()
             self._audit(
                 "register",
                 False,
                 user,
-                user.role,
-                user.entity_id,
+                role,
+                str(user.id),
                 request_ip,
                 user_agent,
                 failure_reason=str(exc),
             )
             raise
 
-        entity_id = profile.get("id") if isinstance(profile, dict) else None
-        if not entity_id:
+        if not profile or not profile.get("auth_user_id"):
             self._compensate_profile(user, request_id)
             user.delete()
             raise ValidationError("Profile provisioning failed")
 
-        try:
-            user.entity_id = entity_id
-            user.save(update_fields=["entity_id"])
-        except Exception as exc:
-            self._compensate_profile(user, request_id)
-            user.delete()
-            raise ValidationError("User update failed") from exc
-
-        claims = self._build_claims(user)
+        claims = self._build_claims(user, profile)
         tokens = TokenService.issue_token_pair(claims)
         self._audit(
             "register",
             True,
             user,
-            user.role,
-            user.entity_id,
+            role,
+            str(user.id),
             request_ip,
             user_agent,
         )
 
         payload = {
-            "user": self._build_user_payload(user),
+            "user": self._build_user_payload(user, profile),
             **tokens,
         }
-        if user.role == "customer":
+        if role == "customer":
             payload["customer"] = profile
         else:
             payload["staff"] = profile
@@ -372,53 +361,68 @@ class AuthService:
             )
             raise InvalidCredentials("Invalid credentials")
 
-        if user.locked_until and user.locked_until > timezone.now():
-            self._audit(
-                "login",
-                False,
-                user,
-                user.role,
-                user.entity_id,
-                request_ip,
-                user_agent,
-                failure_reason="account_locked",
-            )
-            raise AccountLocked("Account locked. Try again later")
-        if role and user.role != role:
-            self._register_failed_login(user, request_ip, user_agent, "invalid_role")
+        # locked check
+        try:
+            failed_count = getattr(user, "failed_login_count", 0)
+            locked_until = getattr(user, "locked_until", None)
+            if locked_until and locked_until > timezone.now():
+                self._audit(
+                    "login",
+                    False,
+                    user,
+                    role or "",
+                    str(user.id),
+                    request_ip,
+                    user_agent,
+                    failure_reason="account_locked",
+                )
+                raise AccountLocked("Account locked. Try again later")
+        except AttributeError:
+            # If we didn't add failed_login_count to AbstractBaseUser in phase 1, skip
+            pass
+
+        try:
+            profile = self._fetch_profile(user, request_id=request_id)
+        except AuthError as exc:
+            logger.warning("Profile fetch failed: %s", exc)
+            profile = None
+
+        actual_role = profile.get("role", "customer") if profile else "customer"
+
+        if role and actual_role != role:
+            self._register_failed_login(user, request_ip, user_agent, "invalid_role", actual_role)
             raise InvalidCredentials("Invalid credentials")
         if not user.check_password(password):
-            self._register_failed_login(user, request_ip, user_agent, "invalid_credentials")
+            self._register_failed_login(user, request_ip, user_agent, "invalid_credentials", actual_role)
             raise InvalidCredentials("Invalid credentials")
 
-        user.failed_login_count = 0
-        user.locked_until = None
         user.last_login_at = timezone.now()
-        user.save(update_fields=["failed_login_count", "locked_until", "last_login_at"])
+        # Reset failed_login_count if it exists
+        if hasattr(user, "failed_login_count"):
+            user.failed_login_count = 0
+            user.locked_until = None
+            user.save(update_fields=["failed_login_count", "locked_until", "last_login_at"])
+        else:
+            user.save(update_fields=["last_login_at"])
 
-        claims = self._build_claims(user)
+        claims = self._build_claims(user, profile)
         tokens = TokenService.issue_token_pair(claims)
         self._audit(
             "login",
             True,
             user,
-            user.role,
-            user.entity_id,
+            actual_role,
+            str(user.id),
             request_ip,
             user_agent,
         )
 
         payload = {
-            "user": self._build_user_payload(user),
+            "user": self._build_user_payload(user, profile),
             **tokens,
         }
-        if include_profile:
-            try:
-                profile = self._fetch_profile(user, request_id=request_id)
-            except AuthError as exc:
-                logger.warning("Profile fetch failed: %s", exc)
-                profile = None
-            if user.role == "customer":
+        if include_profile and profile:
+            if actual_role == "customer":
                 payload["customer"] = profile
             else:
                 payload["staff"] = profile
@@ -428,41 +432,29 @@ class AuthService:
         return TokenService.refresh_access(refresh_token)
 
     def _provision_profile(
-        self, user: AuthUser, data: dict, request_id: str | None = None
+        self, user: AuthUser, data: dict, role: str, request_id: str | None = None
     ) -> dict:
-        if user.role == "customer":
-            payload = {
-                "username": user.username,
-                "email": user.email,
-                "phone": user.phone,
-                "external_id": user.id,
-            }
+        payload = {
+            "auth_user_id": str(user.id),
+            "full_name": data.get("full_name", data.get("username", user.username)),
+            "phone": data.get("phone", ""),
+            "role": role,
+        }
+        if role == "customer":
             return self._create_customer_profile(payload, request_id=request_id)
 
-        staff_role = user.entity_role or "staff"
-        payload = {
-            "username": user.username,
-            "email": user.email,
-            "phone": user.phone,
-            "external_id": user.id,
-            "storage_code": data.get("storage_code"),
-            "department": data.get("department", ""),
-            "position": data.get("position", ""),
-            "role": staff_role,
-        }
+        payload["storage_code"] = data.get("storage_code", "")
+        payload["department"] = data.get("department", "")
+        payload["position"] = data.get("position", "")
         return self._create_staff_profile(payload, request_id=request_id)
 
     def _fetch_profile(self, user: AuthUser, request_id: str | None = None) -> dict | None:
-        # User-service directly maps user.id
         return self.user_client.get(
             f"/internal/users/{user.id}/", request_id=request_id
         )
 
     def _create_customer_profile(self, payload: dict, request_id: str | None = None) -> dict:
         try:
-            # We pass 'id' from AuthUser external_id which we mapped to payload['external_id']
-            payload["id"] = payload.pop("external_id")
-            payload["role"] = "customer"
             return self.user_client.post(
                 "/internal/users/", payload, request_id=request_id
             )
@@ -473,7 +465,6 @@ class AuthService:
 
     def _create_staff_profile(self, payload: dict, request_id: str | None = None) -> dict:
         try:
-            payload["id"] = payload.pop("external_id")
             return self.user_client.post(
                 "/internal/users/", payload, request_id=request_id
             )
@@ -482,37 +473,37 @@ class AuthService:
                 raise ValidationError("Staff profile creation failed", detail=exc.detail) from exc
             raise
 
-    def _build_claims(self, user: AuthUser) -> dict:
+    def _build_claims(self, user: AuthUser, profile: dict | None) -> dict:
+        role = profile.get("role", "customer") if profile else "customer"
         claims = {
-            "user_id": user.id,
+            "user_id": str(user.id),
             "username": user.username,
             "email": user.email,
-            "role": user.role,
-            "entity_id": user.entity_id,
+            "role": role,
+            "entity_id": str(user.id),
         }
-        if user.entity_role:
-            claims["entity_role"] = user.entity_role
+        if profile and profile.get("department"):
+            claims["entity_role"] = profile.get("position", "")
         return claims
 
-    def _build_user_payload(self, user: AuthUser) -> dict:
+    def _build_user_payload(self, user: AuthUser, profile: dict | None) -> dict:
+        role = profile.get("role", "customer") if profile else "customer"
         payload = {
-            "id": user.id,
+            "id": str(user.id),
             "username": user.username,
             "email": user.email,
-            "role": user.role,
-            "entity_id": user.entity_id,
+            "role": role,
+            "entity_id": str(user.id),
         }
-        if user.entity_role:
-            payload["entity_role"] = user.entity_role
         return payload
 
     def _audit(
         self,
         event_type: str,
         success: bool,
-        user: AuthUser,
+        user: AuthUser | None,
         role: str,
-        entity_id: int | None,
+        entity_id: str | None,
         ip_address: str,
         user_agent: str,
         failure_reason: str = "",
@@ -540,18 +531,20 @@ class AuthService:
             logger.warning("Compensation failed: %s", exc)
 
     def _register_failed_login(
-        self, user: AuthUser, request_ip: str, user_agent: str, reason: str
+        self, user: AuthUser, request_ip: str, user_agent: str, reason: str, role: str
     ) -> None:
-        user.failed_login_count += 1
-        if user.failed_login_count >= settings.AUTH_MAX_FAILED_LOGINS:
-            user.locked_until = timezone.now() + timedelta(minutes=settings.AUTH_LOCK_MINUTES)
-        user.save(update_fields=["failed_login_count", "locked_until"])
+        if hasattr(user, "failed_login_count"):
+            user.failed_login_count += 1
+            if user.failed_login_count >= settings.AUTH_MAX_FAILED_LOGINS:
+                user.locked_until = timezone.now() + timedelta(minutes=settings.AUTH_LOCK_MINUTES)
+            user.save(update_fields=["failed_login_count", "locked_until"])
+            
         self._audit(
             "login",
             False,
             user,
-            user.role,
-            user.entity_id,
+            role,
+            str(user.id),
             request_ip,
             user_agent,
             failure_reason=reason,

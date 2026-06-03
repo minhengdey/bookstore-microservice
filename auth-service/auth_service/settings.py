@@ -42,7 +42,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     "ALGORITHM": "HS256",
-    "SIGNING_KEY": os.environ.get("JWT_SECRET_KEY", "bookstore-super-secret-jwt-2026"),
+    "SIGNING_KEY": os.environ.get("JWT_SECRET_KEY", "ecommerce-super-secret-jwt-2026"),
     "ACCESS_TOKEN_LIFETIME": timedelta(
         minutes=int(os.environ.get("JWT_ACCESS_MINUTES", "1440"))
     ),
@@ -111,3 +111,5 @@ CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "False").lower() == "t
 CSRF_TRUSTED_ORIGINS = (
     os.environ.get("CSRF_TRUSTED_ORIGINS", "").split() if os.environ.get("CSRF_TRUSTED_ORIGINS") else []
 )
+
+AUTH_USER_MODEL = "authentication.AuthUser"

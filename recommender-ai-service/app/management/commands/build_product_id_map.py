@@ -1,15 +1,15 @@
 """
-Tạo file JSON map book_id (dataset Kaggle / goodbooks) → book_id local (book-service).
+Tạo file JSON map product_id (dataset Kaggle / goodbooks) → product_id local (product-service).
 
-Cần file books.csv từ cùng bộ goodbooks-10k (tải trên Kaggle cùng ratings.csv).
+Cần file products.csv từ cùng bộ goodbooks-10k (tải trên Kaggle cùng ratings.csv).
 
-  python manage.py build_book_id_map --kaggle-books "D:\\path\\to\\books.csv"
+  python manage.py build_product_id_map --kaggle-products "D:\\path\\to\\products.csv"
 
-Mặc định lấy sách từ BOOK_SERVICE_URL (book-service đang chạy). Ghi ra data/book_id_map.json
+Mặc định lấy sách từ PRODUCT_SERVICE_URL (product-service đang chạy). Ghi ra data/product_id_map.json
 
 Sau đó train lại NMF kèm map:
 
-  python manage.py train_implicit_cf --ratings .../ratings.csv --book-map data/book_id_map.json
+  python manage.py train_implicit_cf --ratings .../ratings.csv --product-map data/product_id_map.json
 """
 import csv
 import json
@@ -31,16 +31,16 @@ def _norm_title(s: str) -> str:
 
 
 def _load_kaggle_books(path: Path):
-    """book_id -> {isbn, title}"""
+    """product_id -> {isbn, title}"""
     by_id = {}
     with open(path, encoding="utf-8", errors="replace", newline="") as f:
         reader = csv.DictReader(f)
         if not reader.fieldnames:
-            raise ValueError("books.csv rỗng")
+            raise ValueError("products.csv rỗng")
         fn = {k.strip().lower(): k for k in reader.fieldnames}
-        bid_col = fn.get("book_id") or fn.get("id")
+        bid_col = fn.get("product_id") or fn.get("id")
         if not bid_col:
-            raise ValueError("Cần cột book_id hoặc id trong books.csv")
+            raise ValueError("Cần cột product_id hoặc id trong products.csv")
         isbn_col = fn.get("isbn")
         isbn13_col = fn.get("isbn13")
         title_col = fn.get("title") or fn.get("original_title")
@@ -61,22 +61,22 @@ def _load_kaggle_books(path: Path):
     return by_id
 
 
-def _resolve_book_service_url(cli_url: str) -> str:
+def _resolve_product_service_url(cli_url: str) -> str:
     """
-    Trên máy host, hostname `book-service` không resolve (chỉ có trong Docker network).
-    Nếu không truyền --book-service-url: dùng localhost + PORT_BOOK khi cần.
+    Trên máy host, hostname `product-service` không resolve (chỉ có trong Docker network).
+    Nếu không truyền --product-service-url: dùng localhost + PORT_PRODUCT khi cần.
     """
     u = (cli_url or "").strip()
     if u:
         return u.rstrip("/")
-    local = os.environ.get("BOOK_SERVICE_LOCAL_URL", "").strip()
+    local = os.environ.get("PRODUCT_SERVICE_LOCAL_URL", "").strip()
     if local:
         return local.rstrip("/")
-    bs = os.environ.get("BOOK_SERVICE_URL", "").strip()
+    bs = os.environ.get("PRODUCT_SERVICE_URL", "").strip()
     in_docker = os.path.exists("/.dockerenv")
     if in_docker:
         return (bs or "http://product-service:8000").rstrip("/")
-    if bs and "product-service" not in bs and "book-service" not in bs:
+    if bs and "product-service" not in bs:
         return bs.rstrip("/")
     port = os.environ.get("PORT_PRODUCT", "8002").strip() or "8002"
     return f"http://127.0.0.1:{port}"
@@ -86,7 +86,7 @@ def _fetch_all_books(base_url: str, page_size: int = 200) -> list[dict]:
     out = []
     page = 1
     while True:
-        url = f"{base_url.rstrip('/')}/books/"
+        url = f"{base_url.rstrip('/')}/products/"
         r = requests.get(url, params={"page": page, "page_size": page_size}, timeout=60)
         r.raise_for_status()
         data = r.json()
@@ -104,26 +104,26 @@ def _fetch_all_books(base_url: str, page_size: int = 200) -> list[dict]:
 
 
 class Command(BaseCommand):
-    help = "Build book_id_map.json: dataset book_id → local book id (ISBN / title)."
+    help = "Build product_id_map.json: dataset product_id → local product id (ISBN / title)."
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--kaggle-books",
+            "--kaggle-products",
             type=str,
             required=True,
-            help="Đường dẫn books.csv (goodbooks-10k)",
+            help="Đường dẫn products.csv (goodbooks-10k)",
         )
         parser.add_argument(
             "--output",
             type=str,
             default="",
-            help="File JSON output (mặc định: data/book_id_map.json)",
+            help="File JSON output (mặc định: data/product_id_map.json)",
         )
         parser.add_argument(
-            "--book-service-url",
+            "--product-service-url",
             type=str,
             default="",
-            help="URL book-service (mặc định: localhost+PORT_BOOK nếu chạy ngoài Docker)",
+            help="URL product-service (mặc định: localhost+PORT_PRODUCT nếu chạy ngoài Docker)",
         )
         parser.add_argument(
             "--match-title",
@@ -137,19 +137,19 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f"Không tìm thấy: {kaggle_path}"))
             return
 
-        out_path = Path(options["output"] or (settings.BASE_DIR / "data" / "book_id_map.json"))
+        out_path = Path(options["output"] or (settings.BASE_DIR / "data" / "product_id_map.json"))
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        base = _resolve_book_service_url(options.get("book_service_url") or "")
-        self.stdout.write(f"Đang đọc Kaggle books: {kaggle_path}")
+        base = _resolve_product_service_url(options.get("product_service_url") or "")
+        self.stdout.write(f"Đang đọc Kaggle products: {kaggle_path}")
         kaggle = _load_kaggle_books(kaggle_path)
-        self.stdout.write(f"  → {len(kaggle)} dòng sách (theo book_id)")
+        self.stdout.write(f"  → {len(kaggle)} dòng sách (theo product_id)")
 
-        self.stdout.write(f"Đang gọi book-service: {base}")
+        self.stdout.write(f"Đang gọi product-service: {base}")
         try:
             local_books = _fetch_all_books(base)
         except requests.RequestException as e:
-            self.stderr.write(self.style.ERROR(f"Không gọi được book-service: {e}"))
+            self.stderr.write(self.style.ERROR(f"Không gọi được product-service: {e}"))
             return
 
         by_isbn: dict[str, int] = {}
@@ -188,6 +188,6 @@ class Command(BaseCommand):
             )
         )
         self.stdout.write(
-            "Bước tiếp: python manage.py train_implicit_cf --ratings ... --book-map "
+            "Bước tiếp: python manage.py train_implicit_cf --ratings ... --product-map "
             f'"{out_path}"'
         )

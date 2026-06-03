@@ -3,7 +3,7 @@
 ## Tasks
 
 - [x] 1. Sửa Seed Script – Thay thế setval cứng bằng COALESCE động
-  Mở từng file SQL trong `scripts/sql/` và thay thế tất cả lệnh `SELECT setval(pg_get_serial_sequence('table','id'), N)` (N là số cứng) bằng `SELECT setval(pg_get_serial_sequence('table','id'), COALESCE((SELECT MAX(id) FROM table), 1))`. Các file cần sửa: `13_user_db_seed.sql`, `06_order_db_seed.sql`, `07_pay_db_seed.sql`, `08_ship_db_seed.sql`, `12_product_db_seed.sql`, `02_catalog_db_seed.sql`, `03_book_db_seed.sql`, `04_staff_db_seed.sql`, `05_cart_db_seed.sql`, `09_manager_db_seed.sql`, `10_comment_rate_db_seed.sql`, `11_recommender_db_seed.sql`. Xác minh `seed_all.sh` đã có case `auth-service` với pattern COALESCE cho `auth_users`.
+  Mở từng file SQL trong `scripts/sql/` và thay thế tất cả lệnh `SELECT setval(pg_get_serial_sequence('table','id'), N)` (N là số cứng) bằng `SELECT setval(pg_get_serial_sequence('table','id'), COALESCE((SELECT MAX(id) FROM table), 1))`. Các file cần sửa: `13_user_db_seed.sql`, `06_order_db_seed.sql`, `07_pay_db_seed.sql`, `08_ship_db_seed.sql`, `12_product_db_seed.sql`, `02_catalog_db_seed.sql`, `03_product_db_seed.sql`, `04_staff_db_seed.sql`, `05_cart_db_seed.sql`, `09_manager_db_seed.sql`, `10_comment_rate_db_seed.sql`, `11_recommender_db_seed.sql`. Xác minh `seed_all.sh` đã có case `auth-service` với pattern COALESCE cho `auth_users`.
   - Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.15
 
 - [x] 2. Git Commit – Stage và commit các thay đổi Saga/Outbox
@@ -21,7 +21,7 @@
   - Depends on: 3
 
 - [x] 5. Thêm service dlq-consumer vào docker-compose.yml
-  Mở `docker-compose.yml` và thêm service `dlq-consumer` vào section `# ── Workers & Consumers` (sau `payment-outbox-worker`). Cấu hình: `build: ./payment-service`, `command: ["python", "manage.py", "consume_dlq"]`, biến môi trường DB và RabbitMQ giống `payment-consumer`, `depends_on: payment-db (service_healthy) + rabbitmq (service_healthy)`, `restart: unless-stopped`, `volumes: ./common:/app/common`, `networks: bookstore-net`.
+  Mở `docker-compose.yml` và thêm service `dlq-consumer` vào section `# ── Workers & Consumers` (sau `payment-outbox-worker`). Cấu hình: `build: ./payment-service`, `command: ["python", "manage.py", "consume_dlq"]`, biến môi trường DB và RabbitMQ giống `payment-consumer`, `depends_on: payment-db (service_healthy) + rabbitmq (service_healthy)`, `restart: unless-stopped`, `volumes: ./common:/app/common`, `networks: Ecommerce-net`.
   - Requirements: 3.7, 3.8
   - Depends on: 3
 

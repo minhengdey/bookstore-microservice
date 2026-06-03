@@ -79,7 +79,7 @@ class BehaviorPredictionService:
         if product_id in self._product_cache:
             return self._product_cache[product_id]
 
-        metadata: dict[str, Any] = {"category": "books", "price": 0.0, "price_tier": "low"}
+        metadata: dict[str, Any] = {"category": "products", "price": 0.0, "price_tier": "low"}
         try:
             response = requests.get(f"{self.product_service_url}/products/{product_id}/", timeout=4)
             if response.status_code == 200:
@@ -92,7 +92,7 @@ class BehaviorPredictionService:
                         category_name = None
                     price = payload.get("price", 0)
                     metadata = {
-                        "category": (str(category_name).strip().lower() if category_name else "books"),
+                        "category": (str(category_name).strip().lower() if category_name else "products"),
                         "price": float(price or 0),
                         "price_tier": self._price_tier(price),
                     }

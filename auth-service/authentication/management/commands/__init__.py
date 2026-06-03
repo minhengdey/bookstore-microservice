@@ -1,0 +1,1 @@
+"""Command package for authentication app."""

@@ -10,7 +10,7 @@ from sklearn.decomposition import NMF
 def save_nmf_model(
     matrix: csr_matrix,
     user_id_to_idx: dict[str, int],
-    idx_to_book_id: list[int],
+    idx_to_product_id: list[int],
     out_dir: Path,
     extra_meta: dict,
     factors: int = 64,
@@ -43,11 +43,11 @@ def save_nmf_model(
     meta = {
         "backend": "nmf",
         "user_id_to_idx": user_id_to_idx,
-        "idx_to_book_id": idx_to_book_id,
+        "idx_to_product_id": idx_to_product_id,
         "n_users": n_users,
         "n_items": n_items,
         "n_components": int(n_comp),
-        "dataset_book_id_to_local_book_id": {},
+        "dataset_product_id_to_local_product_id": {},
         **extra_meta,
     }
 

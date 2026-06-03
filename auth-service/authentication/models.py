@@ -1,50 +1,61 @@
+import uuid
 from django.db import models
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 
+class AuthUserManager(BaseUserManager):
+    def create_user(self, username, email, password=None, **extra):
+        if not username:
+            raise ValueError('The username must be set')
+        email = self.normalize_email(email)
+        user = self.model(username=username, email=email, **extra)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
 
-class AuthUser(models.Model):
-    ROLE_CUSTOMER = "customer"
-    ROLE_STAFF = "staff"
-    ROLE_ADMIN = "admin"
-    ROLE_CHOICES = [
-        (ROLE_CUSTOMER, "Customer"),
-        (ROLE_STAFF, "Staff"),
-        (ROLE_ADMIN, "Admin"),
-    ]
+    def create_superuser(self, username, email, password=None, **extra):
+        extra.setdefault('is_staff', True)
+        extra.setdefault('is_superuser', True)
+        return self.create_user(username, email, password, **extra)
 
+class AuthUser(AbstractBaseUser, PermissionsMixin):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
-    password = models.CharField(max_length=255)
-    phone = models.CharField(max_length=20, blank=True)
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    entity_role = models.CharField(max_length=20, blank=True)
-    entity_id = models.IntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
-    failed_login_count = models.IntegerField(default=0)
-    locked_until = models.DateTimeField(null=True, blank=True)
+    is_staff = models.BooleanField(default=False)
     last_login_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email']
+
+    objects = AuthUserManager()
 
     class Meta:
         db_table = "auth_users"
         ordering = ["username"]
 
-    def set_password(self, raw_password: str) -> None:
-        self.password = make_password(raw_password)
-
-    def check_password(self, raw_password: str) -> bool:
-        return check_password(raw_password, self.password)
-
     def __str__(self) -> str:
-        return f"{self.username}({self.role})"
+        return self.username
 
+
+class RefreshToken(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey('authentication.AuthUser', on_delete=models.CASCADE, related_name='refresh_tokens')
+    token_hash = models.CharField(max_length=255, unique=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "refresh_tokens"
 
 class AuthAudit(models.Model):
     event_type = models.CharField(max_length=50)
-    user_id = models.IntegerField(null=True, blank=True)
+    user_id = models.UUIDField(null=True, blank=True)
     role = models.CharField(max_length=20, blank=True)
-    entity_id = models.IntegerField(null=True, blank=True)
+    entity_id = models.UUIDField(null=True, blank=True)
     success = models.BooleanField(default=False)
     ip_address = models.CharField(max_length=45, blank=True)
     user_agent = models.CharField(max_length=255, blank=True)

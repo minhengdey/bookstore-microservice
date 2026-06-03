@@ -33,7 +33,9 @@
             {% if request.session.user %}
             <span class="user-badge">
                 👤 {{ request.session.user.username }}
-                <span class="role-pill">{{ request.session.user.role }}</span>
+                <span class="role-pill">
+                    {% if request.session.user.role == 'customer' %}Khách hàng{% elif request.session.user.role == 'staff' %}Nhân viên{% elif request.session.user.role == 'admin' %}Quản trị{% else %}{{ request.session.user.role }}{% endif %}
+                </span>
             </span>
             <a href="/logout/" class="btn-logout">Đăng xuất</a>
             {% else %}

@@ -1,6 +1,6 @@
-# BookStore Microservice
+# E-Commerce Microservice
 
-Hệ thống bookstore tách thành 12 microservices (Django), kết nối PostgreSQL trên máy host.
+Hệ thống thương mại điện tử tách thành 8 microservices (Django), kết nối PostgreSQL trên máy host.
 
 ---
 
@@ -36,16 +36,13 @@ Kết nối PostgreSQL bằng **DBeaver** (hoặc psql) với user `postgres`, r
 Hoặc chạy từng lệnh:
 
 ```sql
-CREATE DATABASE customer_db;
-CREATE DATABASE book_db;
-CREATE DATABASE catalog_db;
+CREATE DATABASE auth_db;
+CREATE DATABASE user_db;
+CREATE DATABASE product_db;
 CREATE DATABASE cart_db;
-CREATE DATABASE staff_db;
-CREATE DATABASE manager_db;
 CREATE DATABASE order_db;
 CREATE DATABASE pay_db;
 CREATE DATABASE ship_db;
-CREATE DATABASE comment_rate_db;
 CREATE DATABASE recommender_db;
 ```
 
@@ -56,7 +53,7 @@ CREATE DATABASE recommender_db;
 Mở terminal (PowerShell hoặc CMD) tại thư mục dự án:
 
 ```powershell
-cd d:\Study\Nam4_Ky2\KTVHTPM\bookstore-microservice
+cd d:\Study\Nam4_Ky2\KTVHTPM\Ecommerce-microservice
 
 # Build images (lần đầu hoặc khi đổi code)
 docker compose build
@@ -73,16 +70,13 @@ Lần đầu chạy có thể mất vài phút để build 12 images. Sau khi xo
 
 - **API Gateway (web + proxy):** http://localhost:8000  
 - **Các service trực tiếp:**  
-  - Customer: http://localhost:8001  
-  - Book: http://localhost:8002  
+  - Auth: http://localhost:8012  
+  - User: http://localhost:8001  
+  - Product: http://localhost:8002  
   - Cart: http://localhost:8003  
-  - Staff: http://localhost:8004  
-  - Manager: http://localhost:8005  
-  - Catalog: http://localhost:8006  
   - Order: http://localhost:8007  
   - Pay: http://localhost:8008  
   - Ship: http://localhost:8009  
-  - Comment/Rate: http://localhost:8010  
   - Recommender: http://localhost:8011  
 
 ---
@@ -99,7 +93,7 @@ Sau khi các service đã chạy, có thể nạp dữ liệu mẫu cho tất c�
 .\scripts\seed_all.ps1 -Clear
 ```
 
-Hoặc seed từng service: `docker compose exec customer-service python manage.py seed_mock` (tương tự với `catalog-service`, `book-service`, ...). Thứ tự nên theo: customer → catalog → book → staff → cart → order → pay → ship → manager → comment-rate-service → recommender-ai-service.
+Hoặc seed từng service: `docker compose exec user-service python manage.py seed_mock` (tương tự với `product-service`, `cart-service`, ...). Thứ tự nên theo: auth → user → product → cart → order → pay → ship → recommender-ai-service.
 
 **Tài khoản mẫu sau khi seed:**
 - Khách hàng: `customer1` / `password123` (customer2, customer3 tương tự)

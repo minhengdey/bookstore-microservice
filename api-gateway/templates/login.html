@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Đăng nhập – BookStore</title>
+    <title>Đăng nhập – E-Commerce</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
@@ -17,7 +17,10 @@
     <div class="auth-page-wrapper">
         <div class="auth-card">
             <div class="auth-logo">📚</div>
-            <h2 class="auth-title">Đăng nhập BookStore</h2>
+            <h2 class="auth-title">Đăng nhập E-Commerce</h2>
+            <p class="auth-card-subtitle">
+                Chọn đúng vai trò để vào đúng giao diện: khách hàng, nhân viên hoặc quản trị.
+            </p>
 
             {% if error %}
             <div class="alert-error">{{ error }}</div>
@@ -26,10 +29,20 @@
             <form method="post" id="loginForm" class="auth-form">
                 {% csrf_token %}
                 <div class="tabs">
-                    <button type="button" class="tab active" data-login-type="customer">👤 Khách hàng</button>
-                    <button type="button" class="tab" data-login-type="staff">👨‍💼 Nhân viên</button>
+                    <button type="button" class="tab {% if login_type == 'customer' %}active{% endif %}" data-login-type="customer">👤 Khách hàng</button>
+                    <button type="button" class="tab {% if login_type == 'staff' %}active{% endif %}" data-login-type="staff">👨‍💼 Nhân viên</button>
+                    <button type="button" class="tab {% if login_type == 'admin' %}active{% endif %}" data-login-type="admin">🛡️ Quản trị</button>
                 </div>
-                <input type="hidden" name="login_type" id="login_type" value="customer">
+                <input type="hidden" name="login_type" id="login_type" value="{{ login_type|default:'customer' }}">
+                <div class="auth-role-hint" id="loginRoleHint">
+                    {% if login_type == 'staff' %}
+                    Dành cho nhân viên vận hành và xử lý đơn hàng.
+                    {% elif login_type == 'admin' %}
+                    Dành cho quản trị hệ thống và phân quyền.
+                    {% else %}
+                    Dành cho khách hàng mua sách và theo dõi đơn hàng.
+                    {% endif %}
+                </div>
 
                 <label>Tên đăng nhập hoặc Email</label>
                 <input type="text" name="username" placeholder="Nhập tên đăng nhập hoặc email" required autofocus>
@@ -41,7 +54,7 @@
             </form>
 
             <div class="auth-footer">
-                Chưa có tài khoản? <a href="/register/">Đăng ký khách hàng ngay →</a>
+                Chưa có tài khoản khách hàng? <a href="/register/">Đăng ký ngay →</a>
             </div>
         </div>
     </div>

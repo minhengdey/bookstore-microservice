@@ -16,7 +16,7 @@ from app.services.implicit_cf_engine import get_implicit_engine
 logger = logging.getLogger(__name__)
 
 ORDER_SERVICE_URL = os.environ.get("ORDER_SERVICE_URL", "http://order-service:8000")
-BOOK_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL", "http://product-service:8000")
+PRODUCT_SERVICE_URL = os.environ.get("PRODUCT_SERVICE_URL", "http://product-service:8000")
 COMMENT_RATE_URL = os.environ.get("COMMENT_RATE_URL", "http://comment-rate-service:8000")
 
 def _load_model_actions() -> list[str]:
@@ -45,7 +45,7 @@ class RecommenderService:
     Hybrid gợi ý:
     1. Implicit ALS (offline train từ CSV / Kaggle) — nếu đã train và user có trong tập
     2. Co-purchase (cùng mua) + điểm hành vi
-    3. Fallback: sách đầu danh mục từ book-service
+    3. Fallback: sản phẩm đầu danh mục từ product-service
     """
 
     def __init__(self):
@@ -191,7 +191,7 @@ class RecommenderService:
 
     def _get_top_rated_products(self, limit: int, customer_id: int | None = None, diversify: bool = False) -> list:
         try:
-            r = requests.get(f"{BOOK_SERVICE_URL}/products/", params={"page_size": 200}, timeout=5)
+            r = requests.get(f"{PRODUCT_SERVICE_URL}/products/", params={"page_size": 200}, timeout=5)
             if r.status_code == 200:
                 data = r.json()
                 products = data.get("results", data) if isinstance(data, dict) else data
@@ -249,7 +249,7 @@ class RecommenderService:
         while page <= max_pages:
             try:
                 r = requests.get(
-                    f"{BOOK_SERVICE_URL}/products/",
+                    f"{PRODUCT_SERVICE_URL}/products/",
                     params={"page": page, "page_size": page_size},
                     timeout=5,
                 )

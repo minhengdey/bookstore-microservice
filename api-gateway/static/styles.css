@@ -1,5 +1,5 @@
 /* ============================================
-   BOOKSTORE E-COMMERCE - MAIN STYLESHEET
+    E-COMMERCE - MAIN STYLESHEET
    Cute Pink & Purple Theme
    ============================================ */
 
@@ -958,6 +958,30 @@ tbody tr:last-child td {
     font-size: 0.9rem;
 }
 
+.auth-role-hint {
+    margin: -10px 0 18px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--primary-light);
+    border: 1px solid rgba(251, 111, 146, 0.18);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.auth-role-hint--register {
+    margin-top: 0;
+}
+
+.auth-page-wrapper--compact {
+    padding: 32px 20px;
+}
+
+.auth-card--compact {
+    width: 100%;
+    max-width: 540px;
+}
+
 .auth-divider {
     display: flex;
     align-items: center;
@@ -1024,6 +1048,14 @@ tbody tr:last-child td {
 .tab.active {
     background: var(--primary);
     color: #fff;
+}
+
+.tab:focus-visible,
+.auth-form-submit:focus-visible,
+.btn:focus-visible,
+.auth-footer a:focus-visible {
+    outline: 3px solid rgba(251, 111, 146, 0.25);
+    outline-offset: 2px;
 }
 
 /* ============================================

@@ -2,9 +2,9 @@ import re
 import os
 
 files = [
-    r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\bookstore-microservice\docs\CHUONG2_TAI_LIEU_DU_AN_BOOKSTORE_ECOM.md',
-    r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\bookstore-microservice\docs\CHUONG3_TAI_LIEU_AI_SERVICE.md',
-    r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\bookstore-microservice\docs\CHUONG4_TAI_LIEU_TICH_HOP_VA_TRIEN_KHAI.md'
+    r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\Ecommerce-microservice\docs\CHUONG2_TAI_LIEU_DU_AN_ECOMMERCE_ECOM.md',
+    r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\Ecommerce-microservice\docs\CHUONG3_TAI_LIEU_AI_SERVICE.md',
+    r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\Ecommerce-microservice\docs\CHUONG4_TAI_LIEU_TICH_HOP_VA_TRIEN_KHAI.md'
 ]
 
 replacements = [

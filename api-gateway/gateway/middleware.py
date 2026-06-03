@@ -22,7 +22,7 @@ from django.shortcuts import redirect
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET    = os.environ.get("JWT_SECRET_KEY", "bookstore-jwt-secret-dev")
+JWT_SECRET    = os.environ.get("JWT_SECRET_KEY", "ecommerce-jwt-secret-dev")
 JWT_ALGORITHM = "HS256"
 
 # Routes that never require a token
@@ -34,10 +34,10 @@ PUBLIC_PATHS = {
     "/auth/refresh/",
 }
 
-# Path prefixes that are public (e.g. static files, books listing)
+# Path prefixes that are public (e.g. static files, products listing)
 PUBLIC_PREFIXES = (
     "/static/",
-    "/books",
+    "/products",
     "/catalog",
 )
 

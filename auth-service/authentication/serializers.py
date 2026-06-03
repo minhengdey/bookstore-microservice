@@ -40,11 +40,9 @@ class RegisterSerializer(serializers.Serializer):
         except ValueError as exc:
             raise serializers.ValidationError({"role": str(exc)}) from exc
 
-        if attrs["role"] in ("staff", "admin"):
-            if not attrs.get("storage_code"):
-                raise serializers.ValidationError(
-                    {"storage_code": "storage_code is required for staff"}
-                )
+        if attrs["role"] != "customer":
+            raise serializers.ValidationError({"role": "public registration only creates customer accounts"})
+
         return attrs
 
     def validate_password(self, value):

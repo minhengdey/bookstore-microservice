@@ -1,6 +1,6 @@
 # CHƯƠNG 4: TÍCH HỢP VÀ TRIỂN KHAI
 
-Hành trình xây dựng một kiến trúc Microservices không chỉ dừng lại ở việc viết mã nguồn cho các dịch vụ riêng lẻ. Thử thách khó khăn nhất nằm ở khâu "kết dính" các dịch vụ lại với nhau thành một khối thống nhất có thể tự động giao tiếp, phục hồi sau sự cố và triển khai nhất quán trên mọi môi trường. Chương này trình bày chi tiết bức tranh toàn cảnh về cách 8 microservices kết nối, cơ chế xác thực thông suốt, chiến lược Dockerization, hệ thống logging phân tán, và toàn bộ luồng giao dịch End-to-End của hệ thống Bookstore E-commerce.
+Hành trình xây dựng một kiến trúc Microservices không chỉ dừng lại ở việc viết mã nguồn cho các dịch vụ riêng lẻ. Thử thách khó khăn nhất nằm ở khâu "kết dính" các dịch vụ lại với nhau thành một khối thống nhất có thể tự động giao tiếp, phục hồi sau sự cố và triển khai nhất quán trên mọi môi trường. Chương này trình bày chi tiết bức tranh toàn cảnh về cách 8 microservices kết nối, cơ chế xác thực thông suốt, chiến lược Dockerization, hệ thống logging phân tán, và toàn bộ luồng giao dịch End-to-End của hệ thống E-commerce.
 
 ---
 
@@ -392,7 +392,7 @@ services:
     volumes:
       - product_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - Ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -460,7 +460,7 @@ order-service:
   volumes:
     - ./common:/app/common         # Mount common library
   networks:
-    - bookstore-net
+    - Ecommerce-net
 ```
 
 **`condition: service_healthy`** là cơ chế quan trọng: Docker Compose sẽ không khởi động `order-service` cho đến khi `order-db` trả về `pg_isready` thành công. Điều này tránh tình trạng service khởi động trước khi DB sẵn sàng và crash ngay lập tức.
@@ -572,7 +572,7 @@ jaeger:
 
 ```yaml
 networks:
-  bookstore-net:
+  Ecommerce-net:
     driver: bridge   # Tất cả containers trong cùng virtual network
 
 volumes:
@@ -598,7 +598,7 @@ Named volumes đảm bảo dữ liệu không bị mất khi container restart. 
 
 ### 4.3.1 Kiến trúc Shared Library
 
-Thay vì copy-paste code giữa 8 services, dự án tổ chức các module dùng chung vào package `bookstore-common` được cài dưới dạng editable install (`pip install -e /app/common`):
+Thay vì copy-paste code giữa 8 services, dự án tổ chức các module dùng chung vào package `ecommerce-common` được cài dưới dạng editable install (`pip install -e /app/common`):
 
 ```
 common/
@@ -621,7 +621,7 @@ common/
 from setuptools import setup, find_packages
 
 setup(
-    name="bookstore-common",
+    name="ecommerce-common",
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
@@ -1964,10 +1964,10 @@ POSTGRES_PORT=5432
 # ── JWT ─────────────────────────────────────────────────────────
 # Phải GIỐNG NHAU ở tất cả services
 # Tạo key: python -c "import secrets; print(secrets.token_hex(32))"
-JWT_SECRET_KEY=bookstore-super-secret-jwt-2026
+JWT_SECRET_KEY=ecommerce-super-secret-jwt-2026
 
 # ── Django Secret Keys (mỗi service dùng key riêng) ─────────────
-SECRET_KEY_BOOK=book-service-change-me-in-production
+SECRET_KEY_PRODUCT=product-service-change-me-in-production
 SECRET_KEY_CART=cart-service-change-me-in-production
 SECRET_KEY_ORDER=order-service-change-me-in-production
 SECRET_KEY_PAY=pay-service-change-me-in-production
@@ -2349,7 +2349,7 @@ curl -X POST http://localhost:80/auth/register/ \
 
 ## 4.13 Tổng kết Chương 4
 
-Chương này đã trình bày toàn diện kiến trúc tích hợp và triển khai của hệ thống Bookstore E-commerce Microservices:
+Chương này đã trình bày toàn diện kiến trúc tích hợp và triển khai của hệ thống E-commerce Microservices:
 
 | Thành phần | Giải pháp | Kết quả |
 |---|---|---|

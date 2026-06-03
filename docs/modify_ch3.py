@@ -1,7 +1,7 @@
 import os
 import re
 
-fpath = r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\bookstore-microservice\docs\CHUONG3_TAI_LIEU_AI_SERVICE.md'
+fpath = r'd:\Study\Nam4_Ky2\KTVHTPM\ai-ktmp\Ecommerce-microservice\docs\CHUONG3_TAI_LIEU_AI_SERVICE.md'
 if os.path.exists(fpath):
     with open(fpath, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -27,7 +27,7 @@ if os.path.exists(fpath):
         (r'`README\.md`', 'tài liệu hướng dẫn tổng quan'),
         (r'`meta\.json`', 'tệp lưu trữ siêu dữ liệu (Metadata)'),
         (r'`r\.json`', 'định dạng phản hồi JSON'),
-        (r'`book_id_map\.json`', 'từ điển ánh xạ định danh sản phẩm'),
+        (r'`product_id_map\.json`', 'từ điển ánh xạ định danh sản phẩm'),
         (r'`implicit_cf_engine\.py`', 'Lớp lõi xử lý NMF'),
         (r'`recommender_service\.py`', 'Dịch vụ Điều phối Gợi ý'),
         (r'`rag_llm\.py`', 'Thành phần xử lý RAG'),

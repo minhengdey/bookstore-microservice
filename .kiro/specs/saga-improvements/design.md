@@ -129,7 +129,7 @@ SELECT setval(pg_get_serial_sequence('orders', 'id'), COALESCE((SELECT MAX(id) F
 | `08_ship_db_seed.sql` | `shipping_methods`, `shippings` |
 | `12_product_db_seed.sql` | `categories`, `products` |
 | `02_catalog_db_seed.sql` | `authors`, `categories`, `genres`, `publishers` |
-| `03_book_db_seed.sql` | `books` |
+| `03_product_db_seed.sql` | `products` |
 | `04_staff_db_seed.sql` | `staff_users`, `inventory_staff` |
 | `05_cart_db_seed.sql` | `carts`, `cart_items` |
 | `09_manager_db_seed.sql` | `warehouses`, `suppliers`, `purchase_orders` |
@@ -305,7 +305,7 @@ dlq-consumer:
     rabbitmq:
       condition: service_healthy
   networks:
-    - bookstore-net
+    - Ecommerce-net
   restart: unless-stopped
   volumes:
     - ./common:/app/common

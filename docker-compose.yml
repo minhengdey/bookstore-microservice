@@ -10,7 +10,7 @@ services:
     volumes:
       - product_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -28,7 +28,7 @@ services:
     volumes:
       - cart_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -46,7 +46,7 @@ services:
     volumes:
       - order_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -64,7 +64,7 @@ services:
     volumes:
       - payment_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -82,7 +82,7 @@ services:
     volumes:
       - shipping_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -100,7 +100,7 @@ services:
     volumes:
       - user_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -118,7 +118,7 @@ services:
     volumes:
       - recommender_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -136,7 +136,7 @@ services:
     volumes:
       - auth_db_data:/var/lib/postgresql/data
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -156,7 +156,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=auth-db
       - DB_PORT=${DB_PORT_AUTH:-5432}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-ecommerce-super-secret-jwt-2026}
       - USER_SERVICE_URL=${USER_SERVICE_URL:-http://user-service:8000}
       - AUTH_SERVICE_TIMEOUT=${AUTH_SERVICE_TIMEOUT:-5}
       - AUTH_CIRCUIT_FAIL_THRESHOLD=${AUTH_CIRCUIT_FAIL_THRESHOLD:-5}
@@ -169,7 +169,7 @@ services:
       auth-db:
         condition: service_healthy
     networks:
-      - bookstore-net
+      - ecommerce-net
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live/').read()\""]
       interval: 10s
@@ -187,7 +187,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=user-db
       - DB_PORT=${DB_PORT:-5432}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-ecommerce-super-secret-jwt-2026}
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-internal-dev-token}
       - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
       - INTERNAL_ALLOWED_SERVICES=${INTERNAL_ALLOWED_SERVICES:-auth-service}
@@ -201,9 +201,9 @@ services:
     volumes:
       - ./common:/app/common
     networks:
-      - bookstore-net
+      - ecommerce-net
 
-  # ── Product service (Consolidated Catalog & Book) ────────────────────────
+  # ── Product service (Consolidated Catalog & Product) ────────────────────────
   product-service:
     build: ./product-service
     ports:
@@ -224,7 +224,7 @@ services:
     volumes:
       - ./common:/app/common
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   # ── Message Broker (Event-Driven Architecture) ────────────────────────────
   rabbitmq:
@@ -246,7 +246,7 @@ services:
       retries: 12
       start_period: 120s
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   # ── Distributed Tracing (Jaeger) ──────────────────────────────────────────
   jaeger:
@@ -259,7 +259,7 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   # ── Redis Cache ───────────────────────────────────────────────────────────
   # ── Shopping services ─────────────────────────────────────────────────────
@@ -283,7 +283,7 @@ services:
     volumes:
       - ./common:/app/common
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   order-service:
     build: ./order-service
@@ -305,7 +305,7 @@ services:
     volumes:
       - ./common:/app/common
     networks:
-      - bookstore-net
+      - ecommerce-net
   # ── Payment / Shipping services ───────────────────────────────────────────
   payment-service:
     build: ./payment-service
@@ -327,7 +327,7 @@ services:
     volumes:
       - ./common:/app/common
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   payment-worker:
     build: ./payment-service
@@ -352,7 +352,7 @@ services:
     volumes:
       - ./common:/app/common
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   shipping-service:
     build: ./shipping-service
@@ -374,7 +374,7 @@ services:
     volumes:
       - ./common:/app/common
     networks:
-      - bookstore-net
+      - ecommerce-net
 
 
 
@@ -411,7 +411,7 @@ services:
       neo4j:
         condition: service_started
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   neo4j:
     image: neo4j:5-community
@@ -423,7 +423,7 @@ services:
     volumes:
       - ./neo4j_data:/data
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   redis:
     image: redis:7-alpine
@@ -432,7 +432,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   # ── True API Gateway (NGINX) ──────────────────────────────────────────────
   nginx:
@@ -452,7 +452,7 @@ services:
       - recommender-ai-service
       - api-gateway
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   # ── Django API Gateway (BFF Layer) ────────────────────────────────────────
   api-gateway:
@@ -462,7 +462,7 @@ services:
       - "${PORT_GATEWAY:-8000}:8000"
     environment:
       - SECRET_KEY=${SECRET_KEY_GATEWAY:-api-gateway-dev-key}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-bookstore-super-secret-jwt-2026}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-ecommerce-super-secret-jwt-2026}
       - USER_SERVICE_URL=${USER_SERVICE_URL:-http://user-service:8000}
       - PRODUCT_SERVICE_URL=${PRODUCT_SERVICE_URL:-http://product-service:8000}
       - CART_SERVICE_URL=${CART_SERVICE_URL:-http://cart-service:8000}
@@ -474,7 +474,7 @@ services:
       - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
       - SERVICE_NAME=api-gateway
     networks:
-      - bookstore-net
+      - ecommerce-net
 
   # ── Workers & Consumers ─────────────────────────────────────────────────
   order-outbox-worker:
@@ -494,7 +494,7 @@ services:
       rabbitmq:
         condition: service_healthy
     networks:
-      - bookstore-net
+      - ecommerce-net
     restart: unless-stopped
     volumes:
       - ./common:/app/common
@@ -516,7 +516,7 @@ services:
       rabbitmq:
         condition: service_healthy
     networks:
-      - bookstore-net
+      - ecommerce-net
     restart: unless-stopped
     volumes:
       - ./common:/app/common
@@ -538,7 +538,7 @@ services:
       rabbitmq:
         condition: service_healthy
     networks:
-      - bookstore-net
+      - ecommerce-net
     restart: unless-stopped
     volumes:
       - ./common:/app/common
@@ -564,13 +564,13 @@ services:
       rabbitmq:
         condition: service_healthy
     networks:
-      - bookstore-net
+      - ecommerce-net
     restart: unless-stopped
     volumes:
       - ./common:/app/common
 
 networks:
-  bookstore-net:
+  ecommerce-net:
     driver: bridge
 
 volumes:
