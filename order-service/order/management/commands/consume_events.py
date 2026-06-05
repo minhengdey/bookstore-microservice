@@ -18,7 +18,7 @@ class Command(BaseCommand):
         channel.queue_bind(exchange='dlx', queue='order.dlq', routing_key='order.events')
 
         channel.exchange_declare(exchange='inventory_events', exchange_type='topic', durable=True)
-        channel.exchange_declare(exchange='payment_events', exchange_type='topic', durable=True)
+        channel.exchange_declare(exchange='payment_events', exchange_type='fanout', durable=True)
         
         queue_args = {
             'x-dead-letter-exchange': 'dlx',

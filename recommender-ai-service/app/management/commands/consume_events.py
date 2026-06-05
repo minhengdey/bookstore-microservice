@@ -20,7 +20,7 @@ class Command(BaseCommand):
         channel.exchange_declare(exchange='user_events', exchange_type='topic', durable=True)
         channel.exchange_declare(exchange='catalog_events', exchange_type='topic', durable=True)
         channel.exchange_declare(exchange='interaction_events', exchange_type='topic', durable=True)
-        channel.exchange_declare(exchange='payment_events', exchange_type='topic', durable=True)
+        channel.exchange_declare(exchange='payment_events', exchange_type='fanout', durable=True)
         
         # Queues
         user_q = channel.queue_declare(queue='recommender_user_sync', durable=True)

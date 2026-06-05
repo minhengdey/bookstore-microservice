@@ -19,8 +19,8 @@ class Command(BaseCommand):
         channel.queue_bind(exchange='dlx', queue='notification.dlq', routing_key='notification.events')
 
         # Domain Exchanges
-        channel.exchange_declare(exchange='order_events', exchange_type='topic', durable=True)
-        channel.exchange_declare(exchange='payment_events', exchange_type='topic', durable=True)
+        channel.exchange_declare(exchange='order_events', exchange_type='fanout', durable=True)
+        channel.exchange_declare(exchange='payment_events', exchange_type='fanout', durable=True)
         channel.exchange_declare(exchange='user_events', exchange_type='topic', durable=True)
         
         queue_args = {
