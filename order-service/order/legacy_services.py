@@ -1,7 +1,7 @@
 import logging
 from decimal import Decimal
 from django.db import transaction
-from .models import Order, OrderItem, Discount, OrderDiscount, Invoice, OrderStatus
+from .legacy_models import LegacyOrder as Order, LegacyOrderItem as OrderItem, LegacyDiscount as Discount, LegacyOrderDiscount as OrderDiscount, LegacyInvoice as Invoice, OrderStatus
 from common.client import InternalClient
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class OrderService:
                     raise ValueError(err)
                     
                 # Write to Outbox instead of calling payment-service synchronously
-                from .models import OrderOutbox
+                from .legacy_models import LegacyOrderOutbox as OrderOutbox
                 outbox_payload = {
                     "order_id": order.id,
                     "customer_id": order.customer_id,

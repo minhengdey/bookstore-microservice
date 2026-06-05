@@ -32,7 +32,9 @@
             <tbody>
                 {% for order in orders %}
                 <tr>
-                    <td><span class="badge">{{ order.id }}</span></td>
+                    <td>
+                        <a href="{% url 'order_detail' order.id %}"><span class="badge" style="cursor:pointer;">{{ order.id }}</span></a>
+                    </td>
                     <td>
                         {% if order.customer_name %}
                             {{ order.customer_name }}
@@ -40,7 +42,7 @@
                             #{{ order.customer_id }}
                         {% endif %}
                     </td>
-                    <td>{{ order.order_date|format_date }}</td>
+                    <td>{{ order.order_date_fmt }}</td>
                     <td>
                         <span
                             class="badge {% if order.status == 'delivered' %}badge-success{% elif order.status == 'cancelled' %}badge-danger{% else %}badge-warning{% endif %}">

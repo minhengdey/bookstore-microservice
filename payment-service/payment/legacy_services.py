@@ -1,7 +1,7 @@
 import uuid
 import logging
 from django.db import transaction
-from .models import Payment, PaymentMethod, Transaction, Refund
+from .legacy_models import Payment, PaymentMethod, Transaction, Refund
 from common.client import InternalClient
 
 logger = logging.getLogger(__name__)
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 SHIP_SERVICE_URL = "http://shipping-service:8000"
 
 class PaymentMethodService:
-    def list(self): return PaymentMethod.objects.all()
+    def list(self): return PaymentMethod.objects.filter(is_active=True)
     def get(self, pk):
         m = PaymentMethod.objects.filter(pk=pk).first()
         if not m: raise ValueError(f"PaymentMethod {pk} not found")
@@ -74,7 +74,7 @@ class PaymentService:
             
             if payment.payment_status == "completed":
                 # Write to Outbox instead of calling shipping-service synchronously
-                from .models import PaymentOutbox
+                from .legacy_models import PaymentOutbox
                 outbox_payload = {
                     "payment_id": payment.id,
                     "order_id": order_id,

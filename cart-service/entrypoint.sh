@@ -25,4 +25,5 @@ if [ -d /app/common ]; then
 fi
 python manage.py makemigrations cart --no-input
 python manage.py migrate --no-input
+python manage.py seed_mock || true
 exec python manage.py runserver 0.0.0.0:8000

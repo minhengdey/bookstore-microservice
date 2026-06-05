@@ -8,6 +8,12 @@ echo "PostgreSQL started"
 
 echo "Running migrations..."
 python manage.py migrate
+python manage.py seed_mock || true
 
-echo "Starting server..."
-python manage.py runserver 0.0.0.0:8000
+if [ $# -eq 0 ]; then
+  echo "Starting server..."
+  exec python manage.py runserver 0.0.0.0:8000
+else
+  echo "Executing command: $@"
+  exec "$@"
+fi

@@ -3,7 +3,7 @@ import logging
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.timezone import now
-from payment.models import PaymentOutbox
+from payment.legacy_models import PaymentOutbox
 from common.events import EventPublisher
 
 logger = logging.getLogger(__name__)

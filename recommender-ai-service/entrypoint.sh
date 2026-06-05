@@ -25,11 +25,17 @@ if [ -d /app/common ]; then
     pip install -q -e /app/common || true
 fi
 
-python manage.py makemigrations app --no-input
-python manage.py migrate --no-input
+if [ "$#" -eq 0 ]; then
+    python manage.py makemigrations app --no-input
+    python manage.py migrate --no-input
+    python manage.py seed_mock || true
 
-echo "[entrypoint] Starting cron and adding django crontab..."
-service cron start
-python manage.py crontab add
+    echo "[entrypoint] Starting cron and adding django crontab..."
+    service cron start
+    python manage.py crontab add
 
-exec python manage.py runserver 0.0.0.0:8000 --noreload
+    exec python manage.py runserver 0.0.0.0:8000 --noreload
+else
+    echo "[entrypoint] Running command: $@"
+    exec "$@"
+fi

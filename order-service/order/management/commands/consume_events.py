@@ -31,6 +31,7 @@ class Command(BaseCommand):
         channel.queue_bind(exchange='inventory_events', queue=queue_name, routing_key='inventory.stock.reservation_failed')
         channel.queue_bind(exchange='inventory_events', queue=queue_name, routing_key='inventory.stock.confirmed')
         channel.queue_bind(exchange='payment_events', queue=queue_name, routing_key='payment.succeeded')
+        channel.queue_bind(exchange='payment_events', queue=queue_name, routing_key='payment_completed')
         channel.queue_bind(exchange='payment_events', queue=queue_name, routing_key='payment.failed')
 
         self.stdout.write("Waiting for saga events...")
@@ -38,24 +39,32 @@ class Command(BaseCommand):
         def callback(ch, method, properties, body):
             try:
                 payload = json.loads(body)
-                routing_key = method.routing_key
+                
+                if 'data' in payload and 'event_type' in payload:
+                    event_type = payload['event_type']
+                    data = payload['data']
+                    order_id = data.get('order_id')
+                    routing_key = event_type
+                else:
+                    order_id = payload.get('order_id')
+                    routing_key = method.routing_key
+
                 self.stdout.write(f"Received {routing_key}")
                 
-                order_id = payload.get('order_id')
                 if not order_id:
                     raise ValueError("No order_id in payload")
 
                 if routing_key == 'inventory.stock.reserved':
                     OrderSagaManager.handle_inventory_reserved(order_id)
                 elif routing_key == 'inventory.stock.reservation_failed':
-                    reason = payload.get('reason', 'Unknown out of stock')
+                    reason = payload.get('reason', 'Unknown out of stock') if 'data' not in payload else data.get('reason', 'Unknown out of stock')
                     OrderSagaManager.handle_inventory_reservation_failed(order_id, reason)
                 elif routing_key == 'inventory.stock.confirmed':
                     OrderSagaManager.handle_inventory_confirmed(order_id)
-                elif routing_key == 'payment.succeeded':
+                elif routing_key in ['payment.succeeded', 'payment_completed']:
                     OrderSagaManager.handle_payment_succeeded(order_id)
-                elif routing_key == 'payment.failed':
-                    reason = payload.get('reason', 'Payment failed')
+                elif routing_key in ['payment.failed', 'payment_failed']:
+                    reason = payload.get('reason', 'Payment failed') if 'data' not in payload else data.get('reason', 'Payment failed')
                     OrderSagaManager.handle_payment_failed(order_id, reason)
 
                 ch.basic_ack(delivery_tag=method.delivery_tag)

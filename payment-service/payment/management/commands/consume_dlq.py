@@ -1,7 +1,7 @@
 import json
 import logging
 from django.core.management.base import BaseCommand
-from payment.models import DLQEvent
+from payment.legacy_models import DLQEvent
 from common.events import EventPublisher
 
 logger = logging.getLogger(__name__)

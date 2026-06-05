@@ -1,0 +1,13 @@
+Waiting for PostgreSQL...
+PostgreSQL started
+Running migrations...
+Operations to perform:
+  Apply all migrations: admin, auth, contenttypes, order, sessions
+Running migrations:
+  No migrations to apply.
+  Your models in app(s): 'order' have changes that are not yet reflected in a migration, and so won't be applied.
+  Run 'manage.py makemigrations' to make new migrations, and then re-run 'manage.py migrate' to apply them.
+Unknown command: 'seed_mock'
+Type 'manage.py help' for usage.
+Starting server...
+Watching for file changes with StatReloader

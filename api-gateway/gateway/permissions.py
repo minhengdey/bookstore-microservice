@@ -11,8 +11,27 @@ def _user(request):
     return request.session.get("user") or {}
 
 
+def _roles(request):
+    roles = _user(request).get("roles", [])
+    if isinstance(roles, str):
+        roles = [roles]
+    return [r.strip().upper() for r in roles]
+
+
 def _role(request):
-    return (_user(request).get("role") or "").strip().lower()
+    # Compatibility helper for existing views
+    roles = _roles(request)
+    if not roles:
+        return ""
+    if "CUSTOMER" in roles and len(roles) == 1:
+        return "customer"
+    if "STAFF" in roles:
+        return "staff"
+    if "ADMIN" in roles or "SUPER_ADMIN" in roles:
+        return "manager"
+    if "CUSTOMER" in roles:
+        return "customer"
+    return roles[0].lower()
 
 
 def _entity_id(request):
@@ -30,10 +49,16 @@ def require_roles(*allowed_roles):
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(request, *args, **kwargs):
-            role = _role(request)
-            if not role:
+            roles = _roles(request)
+            if not roles:
                 return redirect("login")
-            if role not in allowed_roles:
+            
+            allowed = [r.upper() for r in allowed_roles]
+            if "MANAGER" in allowed:
+                allowed.extend(["ADMIN", "SUPER_ADMIN"])
+                
+            has_permission = any(r in allowed for r in roles)
+            if not has_permission:
                 return render(request, "403.html", {"message": "Bạn không có quyền truy cập trang này."}, status=403)
             return view_func(request, *args, **kwargs)
         return wrapped
@@ -44,8 +69,7 @@ def require_customer_or_staff(view_func):
     """Customer chỉ truy cập được dữ liệu của chính mình (kiểm tra ở view). Staff/manager được phép."""
     @wraps(view_func)
     def wrapped(request, *args, **kwargs):
-        role = _role(request)
-        if not role:
+        if not _roles(request):
             return redirect("login")
         return view_func(request, *args, **kwargs)
     return wrapped
@@ -56,10 +80,12 @@ def customer_can_only_own(customer_id_param="customer_id"):
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(request, *args, **kwargs):
-            role = _role(request)
-            if not role:
+            roles = _roles(request)
+            if not roles:
                 return redirect("login")
-            if role == "customer":
+            
+            # If they are ONLY a customer
+            if "CUSTOMER" in roles and "STAFF" not in roles and "ADMIN" not in roles and "SUPER_ADMIN" not in roles:
                 eid = _entity_id(request)
                 cid = kwargs.get(customer_id_param)
                 try:

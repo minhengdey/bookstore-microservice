@@ -5,6 +5,21 @@ register = template.Library()
 
 # Bản đồ trạng thái đơn hàng → tiếng Việt
 ORDER_STATUS_MAP = {
+    # New statuses
+    "DRAFT": "Bản nháp",
+    "RESERVING_STOCK": "Đang giữ hàng",
+    "STOCK_RESERVED": "Đã giữ hàng",
+    "PAYMENT_PENDING": "Chờ thanh toán",
+    "PAYMENT_PROCESSING": "Đang thanh toán",
+    "WAITING_INVENTORY_CONFIRM": "Đã thanh toán",
+    "COMPLETED": "Hoàn tất",
+    "PAYMENT_FAILED": "Thanh toán thất bại",
+    "CANCELLING": "Đang hủy",
+    "CANCELLED": "Đã hủy",
+    "REFUND_PENDING": "Chờ hoàn tiền",
+    "REFUNDED": "Đã hoàn tiền",
+    
+    # Legacy statuses
     "pending_payment": "Chờ thanh toán",
     "pending":         "Chờ xử lý",
     "confirmed":       "Đã xác nhận",

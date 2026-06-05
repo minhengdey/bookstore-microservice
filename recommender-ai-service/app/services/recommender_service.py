@@ -24,8 +24,11 @@ def _load_model_actions() -> list[str]:
     if not encoder_path or not encoder_path.exists():
         return list(DEFAULT_ACTION_WEIGHTS)
     try:
-        with open(encoder_path, "rb") as f:
-            encoders = pickle.load(f)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with open(encoder_path, "rb") as f:
+                encoders = pickle.load(f)
         return [str(action) for action in encoders.get("ACTIONS", [])]
     except Exception as exc:
         logger.warning("Failed to load recommender action classes: %s", exc)

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block content %}
+<h1 class="page-title">Chi tiết đơn hàng #{{ order.id }}</h1>
+
+<div class="card" style="max-width:800px; margin:0 auto; padding:24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; border-bottom:1px solid var(--border); padding-bottom:16px;">
+        <div>
+            <p style="margin:0; font-size:1.1rem; color:var(--text-secondary);">
+                Ngày đặt: <strong style="color:var(--text-primary);">{{ order.order_date_fmt }}</strong>
+            </p>
+            {% if order.customer_name %}
+            <p style="margin:4px 0 0 0; font-size:1.1rem; color:var(--text-secondary);">
+                Khách hàng: <strong style="color:var(--text-primary);">{{ order.customer_name }}</strong>
+            </p>
+            {% endif %}
+        </div>
+        <div style="text-align:right;">
+            <span class="badge {% if order.status == 'delivered' or order.status == 'paid' %}badge-success{% elif order.status == 'cancelled' or order.status == 'failed_payment' %}badge-danger{% else %}badge-warning{% endif %}" style="font-size:1.1rem; padding:8px 12px;">
+                {{ order.status_vi }}
+            </span>
+        </div>
+    </div>
+
+    <h3 style="margin-bottom:16px;">Danh sách sản phẩm</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sản phẩm</th>
+                    <th style="text-align:right;">Đơn giá</th>
+                    <th style="text-align:center;">Số lượng</th>
+                    <th style="text-align:right;">Thành tiền</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in order.items %}
+                <tr>
+                    <td>{{ item.product_name }}</td>
+                    <td style="text-align:right;">{{ item.unit_price_fmt }}</td>
+                    <td style="text-align:center;">{{ item.quantity }}</td>
+                    <td style="text-align:right; font-weight:600;">{{ item.line_total_fmt }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" style="text-align:center; padding:16px;">Đơn hàng không có sản phẩm.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top:24px; text-align:right;">
+        <h2 style="color:var(--primary); font-size:1.6rem; margin:0;">
+            Tổng cộng: {{ order.total_amount_fmt }}
+        </h2>
+    </div>
+
+    <div style="margin-top:32px; display:flex; justify-content:space-between; align-items:center; padding-top:20px; border-top:1px solid var(--border);">
+        <a href="{% url 'order_list' %}" class="btn btn-secondary">← Quay lại danh sách</a>
+        
+        {% if is_customer and order.status == 'pending_payment' %}
+        <a href="{% url 'order_pay' order.id %}" class="btn btn-success" style="font-size:1.1rem; padding:10px 24px; font-weight:600; box-shadow:0 4px 12px rgba(16, 185, 129, 0.2);">
+            💳 Thanh toán ngay
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

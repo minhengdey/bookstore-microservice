@@ -30,7 +30,6 @@ from .validators import normalize_role
 
 logger = logging.getLogger(__name__)
 
-
 class CircuitBreaker:
     def __init__(self, failure_threshold: int, recovery_timeout: int):
         self.failure_threshold = failure_threshold
@@ -55,7 +54,6 @@ class CircuitBreaker:
         self.failure_count += 1
         if self.failure_count >= self.failure_threshold:
             self.opened_at = time.time()
-
 
 class UpstreamClient:
     def __init__(self, base_url: str, name: str):
@@ -210,7 +208,6 @@ class UpstreamClient:
         self.breaker.record_success()
         return self._safe_json(response)
 
-
 class TokenService:
     _backend = TokenBackend(
         algorithm=api_settings.ALGORITHM,
@@ -254,7 +251,6 @@ class TokenService:
         if header.startswith("Bearer "):
             return header[7:]
         return ""
-
 
 class AuthService:
     def __init__(self):
@@ -312,24 +308,12 @@ class AuthService:
 
         claims = self._build_claims(user, profile)
         tokens = TokenService.issue_token_pair(claims)
-        self._audit(
-            "register",
-            True,
-            user,
-            role,
-            str(user.id),
-            request_ip,
-            user_agent,
-        )
+        self._audit("register", True, user, role, str(user.id), request_ip, user_agent)
 
         payload = {
             "user": self._build_user_payload(user, profile),
             **tokens,
         }
-        if role == "customer":
-            payload["customer"] = profile
-        else:
-            payload["staff"] = profile
         return payload
 
     def login(
@@ -367,18 +351,10 @@ class AuthService:
             locked_until = getattr(user, "locked_until", None)
             if locked_until and locked_until > timezone.now():
                 self._audit(
-                    "login",
-                    False,
-                    user,
-                    role or "",
-                    str(user.id),
-                    request_ip,
-                    user_agent,
-                    failure_reason="account_locked",
+                    "login", False, user, role or "", str(user.id), request_ip, user_agent, failure_reason="account_locked"
                 )
                 raise AccountLocked("Account locked. Try again later")
         except AttributeError:
-            # If we didn't add failed_login_count to AbstractBaseUser in phase 1, skip
             pass
 
         try:
@@ -387,17 +363,22 @@ class AuthService:
             logger.warning("Profile fetch failed: %s", exc)
             profile = None
 
-        actual_role = profile.get("role", "customer") if profile else "customer"
+        if profile:
+            status = profile.get("status", "ACTIVE")
+            if status in ("SUSPENDED", "BANNED"):
+                raise InvalidCredentials(f"Account is {status}")
 
-        if role and actual_role != role:
-            self._register_failed_login(user, request_ip, user_agent, "invalid_role", actual_role)
+        actual_roles = profile.get("roles", ["CUSTOMER"]) if profile else ["CUSTOMER"]
+        actual_role_str = ",".join(actual_roles)
+
+        if role and role.upper() not in [r.upper() for r in actual_roles]:
+            self._register_failed_login(user, request_ip, user_agent, "invalid_role", actual_role_str)
             raise InvalidCredentials("Invalid credentials")
         if not user.check_password(password):
-            self._register_failed_login(user, request_ip, user_agent, "invalid_credentials", actual_role)
+            self._register_failed_login(user, request_ip, user_agent, "invalid_credentials", actual_role_str)
             raise InvalidCredentials("Invalid credentials")
 
         user.last_login_at = timezone.now()
-        # Reset failed_login_count if it exists
         if hasattr(user, "failed_login_count"):
             user.failed_login_count = 0
             user.locked_until = None
@@ -407,25 +388,14 @@ class AuthService:
 
         claims = self._build_claims(user, profile)
         tokens = TokenService.issue_token_pair(claims)
-        self._audit(
-            "login",
-            True,
-            user,
-            actual_role,
-            str(user.id),
-            request_ip,
-            user_agent,
-        )
+        self._audit("login", True, user, actual_role_str, str(user.id), request_ip, user_agent)
 
         payload = {
             "user": self._build_user_payload(user, profile),
             **tokens,
         }
         if include_profile and profile:
-            if actual_role == "customer":
-                payload["customer"] = profile
-            else:
-                payload["staff"] = profile
+            payload["profile"] = profile
         return payload
 
     def refresh(self, refresh_token: str) -> dict:
@@ -438,62 +408,50 @@ class AuthService:
             "auth_user_id": str(user.id),
             "full_name": data.get("full_name", data.get("username", user.username)),
             "phone": data.get("phone", ""),
-            "role": role,
+            "roles": [role.upper()],
         }
-        if role == "customer":
-            return self._create_customer_profile(payload, request_id=request_id)
-
-        payload["storage_code"] = data.get("storage_code", "")
-        payload["department"] = data.get("department", "")
-        payload["position"] = data.get("position", "")
-        return self._create_staff_profile(payload, request_id=request_id)
+        try:
+            return self.user_client.post("/internal/users/", payload, request_id=request_id)
+        except UpstreamServiceError as exc:
+            if exc.status_code in (400, 409):
+                raise ValidationError("Profile creation failed", detail=exc.detail) from exc
+            raise
 
     def _fetch_profile(self, user: AuthUser, request_id: str | None = None) -> dict | None:
         return self.user_client.get(
             f"/internal/users/{user.id}/", request_id=request_id
         )
 
-    def _create_customer_profile(self, payload: dict, request_id: str | None = None) -> dict:
-        try:
-            return self.user_client.post(
-                "/internal/users/", payload, request_id=request_id
-            )
-        except UpstreamServiceError as exc:
-            if exc.status_code in (400, 409):
-                raise ValidationError("Customer profile creation failed", detail=exc.detail) from exc
-            raise
-
-    def _create_staff_profile(self, payload: dict, request_id: str | None = None) -> dict:
-        try:
-            return self.user_client.post(
-                "/internal/users/", payload, request_id=request_id
-            )
-        except UpstreamServiceError as exc:
-            if exc.status_code in (400, 409):
-                raise ValidationError("Staff profile creation failed", detail=exc.detail) from exc
-            raise
-
     def _build_claims(self, user: AuthUser, profile: dict | None) -> dict:
-        role = profile.get("role", "customer") if profile else "customer"
+        roles = profile.get("roles", ["CUSTOMER"]) if profile else ["CUSTOMER"]
+        status = profile.get("status", "ACTIVE") if profile else "ACTIVE"
+        role_version = profile.get("role_version", 1) if profile else 1
+        
         claims = {
+            "sub": str(user.id),
             "user_id": str(user.id),
             "username": user.username,
-            "email": user.email,
-            "role": role,
-            "entity_id": str(user.id),
+            "roles": [r.upper() for r in roles],
+            "status": status,
+            "role_version": role_version,
+            "entity_id": str(profile.get("entity_id")) if profile and profile.get("entity_id") else str(user.id),
         }
         if profile and profile.get("department"):
             claims["entity_role"] = profile.get("position", "")
         return claims
 
     def _build_user_payload(self, user: AuthUser, profile: dict | None) -> dict:
-        role = profile.get("role", "customer") if profile else "customer"
+        roles = profile.get("roles", ["CUSTOMER"]) if profile else ["CUSTOMER"]
+        status = profile.get("status", "ACTIVE") if profile else "ACTIVE"
+        role_version = profile.get("role_version", 1) if profile else 1
         payload = {
             "id": str(user.id),
             "username": user.username,
             "email": user.email,
-            "role": role,
-            "entity_id": str(user.id),
+            "roles": [r.upper() for r in roles],
+            "status": status,
+            "role_version": role_version,
+            "entity_id": str(profile.get("entity_id")) if profile and profile.get("entity_id") else str(user.id),
         }
         return payload
 

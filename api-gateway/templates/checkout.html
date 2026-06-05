@@ -23,7 +23,7 @@
             {% for item in cart_items %}
             <tr>
                 <td><span class="badge">{{ item.id }}</span></td>
-                <td>Sản phẩm #{{ item.product_id }}</td>
+                <td>{{ item.product_name }}</td>
                 <td>{{ item.quantity }}</td>
                 <td>{{ item.unit_price|vnd }}</td>
                 <td>{{ item.quantity }} × {{ item.unit_price|vnd }}</td>
@@ -35,8 +35,25 @@
     <div class="summary-row">
         <span class="summary-total">Tổng: {{ cart.total_price|vnd }}</span>
     </div>
+
     <form method="POST">
         {% csrf_token %}
+        <div style="margin: 20px 0;">
+            <h3 style="margin-bottom: 12px; color: var(--text-primary);">Thông tin giao hàng</h3>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Địa chỉ giao hàng *</label>
+                <input type="text" name="address" required placeholder="Ví dụ: 123 Đường ABC, Phường X, Quận Y, TP. Z" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius);">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Số điện thoại *</label>
+                <input type="text" name="phone" required placeholder="Nhập số điện thoại của bạn" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius);">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Ghi chú (Tùy chọn)</label>
+                <textarea name="notes" placeholder="Ghi chú thêm cho người giao hàng..." style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); min-height: 80px;"></textarea>
+            </div>
+        </div>
+
         <div class="page-actions">
             <a href="/cart/{{ customer_id }}/" class="btn btn-secondary">← Quay lại giỏ hàng</a>
             <button type="submit" class="btn btn-primary">Tạo đơn hàng và chuyển thanh toán</button>

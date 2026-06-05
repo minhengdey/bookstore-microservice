@@ -5,7 +5,7 @@ Chạy: python manage.py seed_mock
 """
 from decimal import Decimal
 from django.core.management.base import BaseCommand
-from app.models import Cart, CartItem
+from cart.models import Cart, CartItem
 
 
 class Command(BaseCommand):

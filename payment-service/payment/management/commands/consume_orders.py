@@ -3,7 +3,7 @@ import logging
 import pika
 import os
 from django.core.management.base import BaseCommand
-from payment.models import Payment, PaymentStatus, ShippingStatus, PaymentOutbox
+from payment.legacy_models import Payment, PaymentStatus, ShippingStatus, PaymentOutbox
 from common.events import EventPublisher
 from django.db import transaction
 

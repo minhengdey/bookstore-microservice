@@ -24,6 +24,21 @@ _SERVICE_NAME = os.environ.get("SERVICE_NAME", "api-gateway")
 # ── Format helpers (dùng trong views, không cần custom template filter) ───────
 
 ORDER_STATUS_VI = {
+    # New statuses
+    "DRAFT": "Bản nháp",
+    "RESERVING_STOCK": "Đang giữ hàng",
+    "STOCK_RESERVED": "Đã giữ hàng",
+    "PAYMENT_PENDING": "Chờ thanh toán",
+    "PAYMENT_PROCESSING": "Đang thanh toán",
+    "WAITING_INVENTORY_CONFIRM": "Đã thanh toán",
+    "COMPLETED": "Hoàn tất",
+    "PAYMENT_FAILED": "Thanh toán thất bại",
+    "CANCELLING": "Đang hủy",
+    "CANCELLED": "Đã hủy",
+    "REFUND_PENDING": "Chờ hoàn tiền",
+    "REFUNDED": "Đã hoàn tiền",
+    
+    # Legacy statuses
     "pending_payment": "Chờ thanh toán",
     "pending":         "Chờ xử lý",
     "confirmed":       "Đã xác nhận",
@@ -214,11 +229,16 @@ def _auth_headers(request) -> dict:
     payload = getattr(request, "jwt_payload", None)
     if not payload:
         return {}
+    roles = payload.get("roles", [])
     return {
         "X-User-Id":   str(payload.get("user_id", "")),
-        "X-User-Role": str(payload.get("role", "")),
+        "X-Roles":     (",".join(roles) if isinstance(roles, list) else str(roles)).lower(),
+        "X-User-Role": (",".join(roles) if isinstance(roles, list) else str(roles)).lower(),
+        "X-Role":      (",".join(roles) if isinstance(roles, list) else str(roles)).lower(),
         "X-Entity-Id": str(payload.get("entity_id", "")),
         "X-Username":  str(payload.get("username", "")),
+        "X-User-Status": str(payload.get("status", "ACTIVE")),
+        "X-Role-Version": str(payload.get("role_version", 1)),
     }
 
 
@@ -559,7 +579,7 @@ def product_detail(request, product_id):
         quantity = int(request.POST.get("quantity", 1))
         r = _post(
             f"{SVC['cart']}/carts/{customer_id}/items/",
-            json={"product_id": int(product_id), "quantity": quantity},
+            json={"product_id": int(product_id), "quantity": quantity, "unit_price": float(product.get("price") or 0)},
             request=request,
         )
         if r is not None and r.status_code == 201:
@@ -571,7 +591,9 @@ def product_detail(request, product_id):
         _track_behavior_event(request, customer_id, product_id, "click")
         _track_behavior_event(request, customer_id, product_id, "view")
 
-    recommendations = _recommendation_products(request, customer_id, limit=6) if customer_id else []
+    raw_recommendations = _recommendation_products(request, customer_id, limit=7) if customer_id else []
+    recommendations = [r for r in raw_recommendations if str(r.get("id")) != str(product_id)][:6]
+    
     return render(request, "product_detail.html", {
         "product": _fmt_product(product),
         "recommendations": [_fmt_product(r) for r in recommendations],
@@ -615,9 +637,16 @@ def view_cart(request, customer_id):
                 "products": _list_data(_get(f"{SVC['product']}/products/", request, params={"page_size": 500}, cache_ttl=10)),
                 "error": "Vui lòng chọn sản phẩm.",
             })
+        product_price = 0
+        products_list = _list_data(_get(f"{SVC['product']}/products/", request, params={"page_size": 500}, cache_ttl=10))
+        for p in products_list:
+            if str(p.get("id")) == str(product_id):
+                product_price = float(p.get("price") or 0)
+                break
+                
         r = _post(
             f"{SVC['cart']}/carts/{customer_id}/items/",
-            json={"product_id": int(product_id), "quantity": quantity},
+            json={"product_id": int(product_id), "quantity": quantity, "unit_price": product_price},
             request=request,
         )
         if r is not None and r.status_code == 201:
@@ -670,10 +699,15 @@ def checkout(request, customer_id):
         })
 
     if request.method == "POST":
+        address = request.POST.get("address", "").strip()
+        phone = request.POST.get("phone", "").strip()
+        user_notes = request.POST.get("notes", "").strip()
+        notes = f"Giao đến: {address} - SĐT: {phone}\nGhi chú: {user_notes}"
         payload = {
             "customer_id": customer_id,
             "items": [{"product_id": it["product_id"], "quantity": it["quantity"], "unit_price": float(it.get("unit_price", 0))} for it in items],
             "shipping_fee": 0,
+            "notes": notes
         }
         r = _post(f"{SVC['order']}/orders/", json=payload, request=request)
         if r is not None and r.status_code in (200, 201):
@@ -687,8 +721,20 @@ def checkout(request, customer_id):
             "customer_id": customer_id, "cart": cart, "cart_items": items, "error": err,
         })
 
+    products_payload = _get(f"{SVC['product']}/products/", request, params={"page_size": 500}, cache_ttl=10)
+    product_map = {b.get("id"): b for b in _list_data(products_payload) if isinstance(b, dict) and b.get("id") is not None}
+    
+    hydrated_items = []
+    for it in items:
+        pid = it.get("product_id")
+        prod = product_map.get(pid, {})
+        hydrated_items.append({
+            **it,
+            "product_name": prod.get("name") or f"Sản phẩm #{pid}",
+        })
+
     return render(request, "checkout.html", {
-        "customer_id": customer_id, "cart": cart, "cart_items": items,
+        "customer_id": customer_id, "cart": cart, "cart_items": hydrated_items,
     })
 
 
@@ -705,9 +751,9 @@ def order_pay(request, order_id):
         method_id = request.POST.get("payment_method_id")
         amount = request.POST.get("payment_amount", "").strip() or str(order.get("total_amount", 0))
         if not method_id:
-            methods_payload = _get(f"{SVC['pay']}/payment-methods/", request, cache_ttl=60) or []
+            methods_payload = [{"id": 1, "method_name": "Thanh toán giả lập", "description": "Mô phỏng thanh toán (tự động thành công)"}]
             return render(request, "order_pay.html", {
-                "order": order, "order_id": order_id, "payment_methods": _list_data(methods_payload),
+                "order": order, "order_id": order_id, "payment_methods": methods_payload,
                 "error": "Vui lòng chọn phương thức thanh toán.",
             })
         try:
@@ -734,12 +780,12 @@ def order_pay(request, order_id):
             return redirect("order_list")
         err_payload = _response_error(r, "pay-service không phản hồi")
         err = err_payload.get("error") if isinstance(err_payload, dict) else err_payload
-        methods_payload = _get(f"{SVC['pay']}/payment-methods/", request, cache_ttl=60) or []
+        methods_payload = [{"id": 1, "method_name": "Thanh toán giả lập", "description": "Mô phỏng thanh toán (tự động thành công)"}]
         return render(request, "order_pay.html", {
-            "order": order, "order_id": order_id, "payment_methods": _list_data(methods_payload), "error": err,
+            "order": order, "order_id": order_id, "payment_methods": methods_payload, "error": err,
         })
 
-    methods_payload = _get(f"{SVC['pay']}/payment-methods/", request, cache_ttl=60) or []
+    methods_payload = [{"id": 1, "method_name": "Thanh toán giả lập", "description": "Mô phỏng thanh toán (tự động thành công)"}]
     return render(request, "order_pay.html", {
         "order": order, "order_id": order_id, "payment_methods": _list_data(methods_payload),
     })
@@ -755,9 +801,8 @@ def _enrich_orders_with_customer_name(request, orders):
     customer_ids = list({o.get("customer_id") for o in orders if o.get("customer_id") is not None})
     if not customer_ids:
         return orders
-    # Fetch song song dùng internal signed request
     calls = [
-        (_get_internal, (f"{SVC['user']}/internal/users/{cid}/",), {"cache_ttl": 60})
+        (_get, (f"{SVC['user']}/internal/users/{cid}/",), {"cache_ttl": 60})
         for cid in customer_ids
     ]
     results = _parallel_call(calls, max_workers=min(8, len(calls)))
@@ -812,6 +857,37 @@ def customer_orders(request, customer_id):
         "order_success_msg": success_msg,
     })
 
+
+@require_customer_or_staff
+def order_detail(request, order_id):
+    order = _get(f"{SVC['order']}/orders/{order_id}/", request)
+    if not order or not isinstance(order, dict):
+        return render(request, "403.html", {"message": "Không tìm thấy đơn hàng."}, status=404)
+        
+    # Get product details for items
+    products_payload = _get(f"{SVC['product']}/products/", request, params={"page_size": 500}, cache_ttl=10)
+    product_map = {p.get("id"): p for p in _list_data(products_payload) if isinstance(p, dict) and p.get("id")}
+    
+    items = order.get("items", [])
+    hydrated_items = []
+    for it in items:
+        pid = it.get("product_id")
+        prod = product_map.get(pid, {})
+        hydrated_items.append({
+            **it,
+            "product_name": prod.get("name") or f"Sản phẩm #{pid}",
+            "unit_price_fmt": _fmt_vnd(it.get("unit_price", 0)),
+            "line_total_fmt": _fmt_vnd(float(it.get("unit_price", 0)) * int(it.get("quantity", 0))),
+        })
+    order["items"] = hydrated_items
+    
+    # Enrich with customer name if needed
+    order = _enrich_orders_with_customer_name(request, [order])[0]
+    
+    return render(request, "order_detail.html", {
+        "order": _fmt_order(order),
+        "is_customer": _role(request) == "customer",
+    })
 
 # ── Recommendations ───────────────────────────────────────────────────────────
 

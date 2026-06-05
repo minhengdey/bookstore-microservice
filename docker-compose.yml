@@ -9,6 +9,7 @@ services:
       - POSTGRES_DB=${DB_NAME_CATALOG:-catalog_db}
     volumes:
       - catalog_db_data:/var/lib/postgresql/data
+      - ./scripts/sql/02_catalog_db_seed.sql:/docker-entrypoint-initdb.d/02_catalog_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -45,6 +46,7 @@ services:
       - POSTGRES_DB=${DB_NAME_ORDER:-order_db}
     volumes:
       - order_db_data:/var/lib/postgresql/data
+      - ./scripts/sql/06_order_db_seed.sql:/docker-entrypoint-initdb.d/06_order_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -60,9 +62,10 @@ services:
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${DB_NAME_PAYMENT:-payment_db}
+      - POSTGRES_DB=${DB_NAME_PAY:-pay_db}
     volumes:
       - payment_db_data:/var/lib/postgresql/data
+
     networks:
       - ecommerce-net
     healthcheck:
@@ -129,6 +132,7 @@ services:
       - POSTGRES_DB=${DB_NAME_PRODUCT:-product_db}
     volumes:
       - product_db_data:/var/lib/postgresql/data
+      - ./scripts/sql/12_product_db_seed.sql:/docker-entrypoint-initdb.d/12_product_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -147,6 +151,7 @@ services:
       - POSTGRES_DB=${DB_NAME_CART:-cart_db}
     volumes:
       - cart_db_data:/var/lib/postgresql/data
+      - ./scripts/sql/05_cart_db_seed.sql:/docker-entrypoint-initdb.d/05_cart_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -166,6 +171,7 @@ services:
       - POSTGRES_DB=${DB_NAME_SHIP:-ship_db}
     volumes:
       - shipping_db_data:/var/lib/postgresql/data
+      - ./scripts/sql/08_ship_db_seed.sql:/docker-entrypoint-initdb.d/08_ship_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -184,6 +190,7 @@ services:
       - POSTGRES_DB=${DB_NAME_USER:-user_db}
     volumes:
       - user_db_data:/var/lib/postgresql/data
+      - ./scripts/sql/13_user_db_seed.sql:/docker-entrypoint-initdb.d/13_user_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -202,6 +209,7 @@ services:
       - POSTGRES_DB=${DB_NAME_RECOMMENDER:-recommender_db}
     volumes:
       - recommender_db_data:/var/lib/postgresql/data
+      - ./scripts/sql/11_recommender_db_seed.sql:/docker-entrypoint-initdb.d/11_recommender_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -220,6 +228,7 @@ services:
       - POSTGRES_DB=${DB_NAME_AUTH:-auth_db}
     volumes:
       - auth_db_data:/var/lib/postgresql/data
+      - ./scripts/sql/01_auth_db_seed.sql:/docker-entrypoint-initdb.d/01_auth_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -241,6 +250,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=auth-db
       - DB_PORT=${DB_PORT_AUTH:-5432}
+      - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-ecommerce-super-secret-jwt-2026}
       - USER_SERVICE_URL=${USER_SERVICE_URL:-http://user-service:8000}
       - AUTH_SERVICE_TIMEOUT=${AUTH_SERVICE_TIMEOUT:-5}
@@ -253,6 +263,8 @@ services:
     depends_on:
       auth-db:
         condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - ecommerce-net
     healthcheck:
@@ -371,8 +383,8 @@ services:
     ports:
       - "${PORT_PAYMENT:-8015}:8000"
     environment:
-      - SECRET_KEY=${SECRET_KEY_PAYMENT:-payment-service-dev-key}
-      - DB_NAME=${DB_NAME_PAYMENT:-payment_db}
+      - SECRET_KEY=${SECRET_KEY_PAY:-payment-service-dev-key}
+      - DB_NAME=${DB_NAME_PAY:-pay_db}
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=payment-db
@@ -476,10 +488,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 10s
-      timeout: 10s
-      retries: 12
-      start_period: 120s
+      interval: 15s
+      timeout: 30s
+      retries: 20
+      start_period: 180s
     networks:
       - ecommerce-net
 
@@ -684,6 +696,29 @@ services:
       - DB_HOST=order-db
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
+    depends_on:
+      order-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+    restart: unless-stopped
+    volumes:
+      - ./common:/app/common
+
+  order-consumer:
+    build: ./order-service
+    command: ["python", "manage.py", "consume_events"]
+    environment:
+      - SECRET_KEY=${SECRET_KEY_ORDER:-order-service-dev-key}
+      - DB_NAME=${DB_NAME_ORDER:-order_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=order-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
     depends_on:
       order-db:
         condition: service_healthy

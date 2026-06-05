@@ -101,8 +101,7 @@
                             {% endif %}
                         </div>
                     </td>
-                    <td><a href="/products/{{ p.id }}/" style="font-weight: 600; color: var(--primary);">{{ p.name
-                            }}</a></td>
+                    <td><a href="/products/{{ p.id }}/" style="font-weight: 600; color: var(--primary);">{{ p.name }}</a></td>
                     <td>{{ p.price|vnd }}</td>
                     <td>
                         {% if p.category and p.category.name %}
@@ -132,8 +131,7 @@
         {% if products_pagination.prev_page %}
         <a href="{{ products_pagination.query_for_prev }}" class="btn btn-secondary btn-sm">Trang trước</a>
         {% endif %}
-        <span style="padding: 6px 12px; font-size: 0.9rem;">Trang {{ products_pagination.page }} / {{
-            products_pagination.total_pages }}</span>
+        <span style="padding: 6px 12px; font-size: 0.9rem;">Trang {{ products_pagination.page }} / {{ products_pagination.total_pages }}</span>
         {% if products_pagination.next_page %}
         <a href="{{ products_pagination.query_for_next }}" class="btn btn-secondary btn-sm">Trang sau</a>
         {% endif %}

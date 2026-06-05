@@ -95,8 +95,11 @@ class UserBehaviorPredictor:
             custom_objects={"MultiHeadSelfAttention": MultiHeadSelfAttention},
             compile=False,
         )
-        with open(encoder_path, "rb") as f:
-            self.enc_dict = pickle.load(f)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with open(encoder_path, "rb") as f:
+                self.enc_dict = pickle.load(f)
         
         self.encoders = {k: v for k, v in self.enc_dict.items() 
                         if hasattr(v, 'transform')}

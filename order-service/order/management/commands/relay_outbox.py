@@ -3,7 +3,7 @@ import logging
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.timezone import now
-from order.models import OrderOutbox
+from order.legacy_models import LegacyOrderOutbox as OrderOutbox
 from common.events import EventPublisher
 
 logger = logging.getLogger(__name__)

@@ -7,4 +7,5 @@ urlpatterns = [
     path('health', health_check),
     path('ready', ready_check),
     path('api/v1/payments/', include('payment.urls')),
+    path('', include('payment.legacy_urls')),
 ]

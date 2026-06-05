@@ -1,11 +1,10 @@
 def normalize_role(role: str) -> str:
-    value = (role or "").strip().lower()
-    if value == "manager":
-        return "admin"
-    if value not in ("customer", "staff", "admin"):
-        raise ValueError("role must be customer, staff, or admin")
+    value = (role or "").strip().upper()
+    if value == "MANAGER":
+        return "ADMIN"
+    if value not in ("CUSTOMER", "SELLER", "STAFF", "ADMIN", "SUPER_ADMIN"):
+        raise ValueError("role must be CUSTOMER, SELLER, STAFF, ADMIN, or SUPER_ADMIN")
     return value
-
 
 def validate_password_strength(password: str) -> None:
     if len(password) < 8:

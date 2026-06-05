@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% load custom_filters %}
 {% block content %}
-<h1 class="page-title">🛒 Giỏ hàng{% if request.session.user.role == 'customer' %} của tôi{% else %} – Khách #{{
-    customer_id }}{% endif %}</h1>
+<h1 class="page-title">🛒 Giỏ hàng{% if 'CUSTOMER' in request.session.user.roles %} của tôi{% else %} – Khách #{{ customer_id }}{% endif %}</h1>
 
 <div class="card">
     <h2>Thêm sản phẩm</h2>

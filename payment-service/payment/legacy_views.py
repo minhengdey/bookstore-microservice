@@ -2,8 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from common.auth import require_auth, require_customer, require_staff, require_manager, require_internal
-from .services import PaymentService, PaymentMethodService
-from .serializers import PaymentSerializer, PaymentMethodSerializer, RefundSerializer
+from .legacy_services import PaymentService, PaymentMethodService
+from .legacy_serializers import PaymentSerializer, PaymentMethodSerializer, RefundSerializer
 
 _pay_svc = PaymentService()
 _method_svc = PaymentMethodService()

@@ -11,7 +11,7 @@ class OrderStatus(models.TextChoices):
     PAID = "paid", "Paid"
     FAILED_PAYMENT = "failed_payment", "Failed Payment"
 
-class Order(models.Model):
+class LegacyOrder(models.Model):
     customer_id = models.IntegerField()
     order_date = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.PENDING_PAYMENT)
@@ -28,8 +28,8 @@ class Order(models.Model):
     def __str__(self):
         return f"Order-{self.id} ({self.status})"
 
-class OrderItem(models.Model):
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
+class LegacyOrderItem(models.Model):
+    order = models.ForeignKey(LegacyOrder, on_delete=models.CASCADE, related_name="items")
     product_id = models.IntegerField()
     quantity = models.IntegerField()
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -42,7 +42,7 @@ class OrderItem(models.Model):
     def subtotal(self):
         return (self.unit_price - self.discount) * self.quantity
 
-class Discount(models.Model):
+class LegacyDiscount(models.Model):
     discount_code = models.CharField(max_length=50, unique=True)
     discount_name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -58,8 +58,8 @@ class Discount(models.Model):
     def __str__(self):
         return f"{self.discount_code} ({self.discount_value}{'%' if self.is_percentage else ''})"
 
-class OrderDiscount(models.Model):
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="order_discounts")
+class LegacyOrderDiscount(models.Model):
+    order = models.ForeignKey(LegacyOrder, on_delete=models.CASCADE, related_name="order_discounts")
     discount_id = models.IntegerField()
     applied_value = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -72,8 +72,8 @@ class InvoiceStatus(models.TextChoices):
     PAID = "paid", "Paid"
     OVERDUE = "overdue", "Overdue"
 
-class Invoice(models.Model):
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="invoice")
+class LegacyInvoice(models.Model):
+    order = models.OneToOneField(LegacyOrder, on_delete=models.CASCADE, related_name="invoice")
     created_date = models.DateTimeField(auto_now_add=True)
     due_date = models.DateField(null=True, blank=True)
     description = models.TextField(blank=True)
@@ -88,7 +88,7 @@ class CouponStatus(models.TextChoices):
     USED = "used", "Used"
     EXPIRED = "expired", "Expired"
 
-class Coupon(models.Model):
+class LegacyCoupon(models.Model):
     customer_id = models.IntegerField()
     order_id = models.IntegerField(null=True, blank=True)
     coupon_code = models.CharField(max_length=50, unique=True)
@@ -102,7 +102,7 @@ class Coupon(models.Model):
 
 from common.outbox import AbstractOutboxEvent
 
-class OrderOutbox(AbstractOutboxEvent):
+class LegacyOrderOutbox(AbstractOutboxEvent):
     class Meta:
         db_table = "order_outbox"
         indexes = [

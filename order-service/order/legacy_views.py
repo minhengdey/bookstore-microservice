@@ -2,10 +2,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Count, Sum
-from .services import OrderService, DiscountService
-from .serializers import OrderSerializer, DiscountSerializer
+from .legacy_services import OrderService, DiscountService
+from .legacy_serializers import OrderSerializer, DiscountSerializer
 from common.auth import require_auth, require_customer, require_staff, require_manager, require_internal
-from .models import Order
+from .legacy_models import LegacyOrder as Order
 
 _order_svc    = OrderService()
 _discount_svc = DiscountService()
@@ -147,7 +147,7 @@ class InternalBulkOrderStatusView(APIView):
     def post(self, request):
         try:
             order_ids = request.data.get("order_ids", [])
-            from .models import Order
+            from .legacy_models import LegacyOrder as Order
             orders = Order.objects.filter(id__in=order_ids)
             statuses = {o.id: o.status for o in orders}
             return Response({"statuses": statuses})

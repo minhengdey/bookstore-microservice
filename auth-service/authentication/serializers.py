@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .validators import normalize_role, validate_password_strength
 
-
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
@@ -22,7 +21,6 @@ class LoginSerializer(serializers.Serializer):
                 raise serializers.ValidationError({"role": str(exc)}) from exc
         return attrs
 
-
 class RegisterSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
@@ -34,14 +32,14 @@ class RegisterSerializer(serializers.Serializer):
     position = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, attrs):
-        role = attrs.get("role") or "customer"
+        role = attrs.get("role") or "CUSTOMER"
         try:
             attrs["role"] = normalize_role(role)
         except ValueError as exc:
             raise serializers.ValidationError({"role": str(exc)}) from exc
 
-        if attrs["role"] != "customer":
-            raise serializers.ValidationError({"role": "public registration only creates customer accounts"})
+        if attrs["role"] not in ("CUSTOMER", "SELLER"):
+            raise serializers.ValidationError({"role": "public registration only creates CUSTOMER or SELLER accounts"})
 
         return attrs
 
@@ -51,7 +49,6 @@ class RegisterSerializer(serializers.Serializer):
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
         return value
-
 
 class RefreshSerializer(serializers.Serializer):
     refresh = serializers.CharField()

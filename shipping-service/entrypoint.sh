@@ -25,6 +25,7 @@ if [ -d /app/common ]; then
 fi
 python manage.py makemigrations --no-input
 python manage.py migrate --no-input
+python manage.py seed_mock || true
 if [ "$#" -gt 0 ]; then
     exec "$@"
 fi

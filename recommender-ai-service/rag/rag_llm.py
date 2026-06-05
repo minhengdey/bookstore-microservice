@@ -43,6 +43,13 @@ def _load():
         
         rag = RAGSystem(G, df)
         print("[rag_llm] RAG system rebuilt successfully.")
+        
+        try:
+            with open(rag_pkl_path, "wb") as f:
+                pickle.dump(rag, f)
+            print("[rag_llm] Saved rebuilt RAG system to pickle.")
+        except Exception as save_err:
+            print(f"[rag_llm] Failed to save pickle: {save_err}")
     
     return df, rag
 

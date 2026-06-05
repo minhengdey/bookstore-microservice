@@ -1,0 +1,2 @@
+LEGACY STATUS: 201
+LEGACY TEXT: {"id":1,"items":[{"id":1,"product_id":1,"quantity":1,"unit_price":"1000.00","discount":"0.00","order":1}],"customer_id":1,"order_date":"2026-06-04T08:12:22.368498Z","status":"pending_payment","shipping_fee":"0.00","discount_amount":"0.00","total_amount":"1000.00","admin_id":null,"notes":"Test"}

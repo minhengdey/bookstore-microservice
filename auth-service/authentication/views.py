@@ -177,8 +177,60 @@ class IntrospectTokenView(APIView):
     def get(self, request):
         token = TokenService.extract_token(request)
         payload = TokenService.decode_token(token)
+        user_id = payload.get("sub", "")
+        
+        # Redis cache check
+        import redis
+        import json
+        import os
+        from .exceptions import UpstreamServiceError
+        from rest_framework.exceptions import AuthenticationFailed
+        
+        redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+        try:
+            r = redis.StrictRedis.from_url(redis_url, decode_responses=True)
+            cache_key = f"user_profile:v1:{user_id}"
+            cached_data = r.get(cache_key)
+            if cached_data:
+                profile = json.loads(cached_data)
+            else:
+                # Cache miss -> HTTP fallback
+                user = type('obj', (object,), {'id': user_id})
+                profile = _auth_service._fetch_profile(user)
+                if profile:
+                    # Cache it with 5 mins TTL
+                    r.setex(cache_key, 300, json.dumps(profile))
+        except UpstreamServiceError:
+            # Fail closed if user-service is down
+            raise AuthenticationFailed("Unable to verify user status (Service Unavailable)")
+        except Exception:
+            # Redis failure or other, fallback to payload for resilience?
+            # User specifically asked for Fail Closed on User Service Down + Redis Miss.
+            # If we reach here, it might be a general exception, but let's try to fetch if we haven't
+            try:
+                if 'profile' not in locals() or not profile:
+                    user = type('obj', (object,), {'id': user_id})
+                    profile = _auth_service._fetch_profile(user)
+            except Exception:
+                raise AuthenticationFailed("Unable to verify user status")
+
+        if not profile:
+            raise AuthenticationFailed("User profile not found")
+
+        current_status = profile.get("status", "ACTIVE")
+        current_role_version = profile.get("role_version", 1)
+
+        if current_status in ("SUSPENDED", "BANNED"):
+            raise AuthenticationFailed(f"Account is {current_status}")
+
+        if str(payload.get("role_version", 1)) != str(current_role_version):
+            raise AuthenticationFailed("Token revoked due to role changes")
         
         response = Response(status=status.HTTP_204_NO_CONTENT)
-        response["X-User-Id"] = str(payload.get("sub", ""))
-        response["X-Role"] = str(payload.get("role", "customer"))
+        response["X-User-Id"] = str(user_id)
+        response["X-Username"] = str(payload.get("username", ""))
+        roles = payload.get("roles", ["CUSTOMER"])
+        response["X-Roles"] = ",".join(roles) if isinstance(roles, list) else str(roles)
+        response["X-User-Status"] = str(current_status)
+        response["X-Role-Version"] = str(current_role_version)
         return response

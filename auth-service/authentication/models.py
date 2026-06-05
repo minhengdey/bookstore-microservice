@@ -65,6 +65,11 @@ class AuthAudit(models.Model):
     class Meta:
         db_table = "auth_audit"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user_id"]),
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["event_type"]),
+        ]
 
     def __str__(self):
         return f"{self.event_type}({self.user_id},{self.role})"
