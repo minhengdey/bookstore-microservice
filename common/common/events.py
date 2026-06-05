@@ -14,20 +14,40 @@ class EventPublisher:
     @classmethod
     def get_channel(cls):
         if not cls._connection or cls._connection.is_closed:
+            # Try standard host/credentials first
             host = os.environ.get("RABBITMQ_HOST", "rabbitmq")
             user = os.environ.get("RABBITMQ_USER", "user")
             pwd = os.environ.get("RABBITMQ_PASS", "password")
-            
-            credentials = pika.PlainCredentials(user, pwd)
-            parameters = pika.ConnectionParameters(
-                host=host, 
-                credentials=credentials,
-                heartbeat=600,
-                blocked_connection_timeout=300
-            )
-            cls._connection = pika.BlockingConnection(parameters)
+
+            max_retries = int(os.getenv("RABBITMQ_CONN_RETRIES", "5"))
+            delay = float(os.getenv("RABBITMQ_CONN_DELAY", "2"))
+
+            for attempt in range(1, max_retries + 1):
+                try:
+                    credentials = pika.PlainCredentials(user, pwd)
+                    parameters = pika.ConnectionParameters(
+                        host=host,
+                        credentials=credentials,
+                        heartbeat=600,
+                        blocked_connection_timeout=300
+                    )
+                    cls._connection = pika.BlockingConnection(parameters)
+                    break
+                except Exception as conn_err:
+                    logger.warning(f"RabbitMQ connection attempt {attempt} failed: {conn_err}")
+                    if attempt == max_retries:
+                        # Fallback to URL if provided
+                        url = os.environ.get("RABBITMQ_URL")
+                        if url:
+                            logger.info("Attempting RabbitMQ connection via RABBITMQ_URL fallback")
+                            cls._connection = pika.BlockingConnection(pika.URLParameters(url))
+                        else:
+                            raise
+                    else:
+                        import time; time.sleep(delay)
+
             cls._channel = cls._connection.channel()
-            
+
             # Setup exchanges and DLQs globally
             cls._setup_topology()
             

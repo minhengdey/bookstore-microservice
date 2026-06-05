@@ -335,6 +335,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=inventory-db
       - DB_PORT=${DB_PORT:-5432}
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
       - PYTHONPATH=/app/common
       - SERVICE_NAME=inventory-service
       - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service
@@ -695,9 +696,57 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=order-db
       - DB_PORT=${DB_PORT:-5432}
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
       - PYTHONPATH=/app/common
     depends_on:
       order-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+    restart: unless-stopped
+    volumes:
+      - ./common:/app/common
+
+  inventory-outbox-worker:
+    build: ./inventory-service
+    command: ["python", "manage.py", "relay_outbox"]
+    environment:
+      - SECRET_KEY=${SECRET_KEY_INVENTORY:-inventory-service-dev-key}
+      - DB_NAME=${DB_NAME_INVENTORY:-inventory_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=inventory-db
+      - DB_PORT=${DB_PORT:-5432}
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
+      - PYTHONPATH=/app/common
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ecommerce-net
+    restart: unless-stopped
+    volumes:
+      - ./common:/app/common
+
+  inventory-order-consumer:
+    build: ./inventory-service
+    command: ["python", "manage.py", "consume_order_events"]
+    environment:
+      - SECRET_KEY=${SECRET_KEY_INVENTORY:-inventory-service-dev-key}
+      - DB_NAME=${DB_NAME_INVENTORY:-inventory_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=inventory-db
+      - DB_PORT=${DB_PORT:-5432}
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
+      - RESERVATION_TTL_MINUTES=${RESERVATION_TTL_MINUTES:-15}
+      - PYTHONPATH=/app/common
+    depends_on:
+      inventory-db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -718,7 +767,7 @@ services:
       - DB_HOST=order-db
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
     depends_on:
       order-db:
         condition: service_healthy

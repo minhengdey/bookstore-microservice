@@ -3,7 +3,7 @@ import logging
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.timezone import now
-from order.legacy_models import LegacyOrderOutbox as OrderOutbox
+from order.models import OutboxEvent
 from common.events import EventPublisher
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ class Command(BaseCommand):
         
         while True:
             # Poll pending events
-            events = OrderOutbox.objects.filter(status="PENDING").order_by("created_at")[:50]
+            events = OutboxEvent.objects.filter(status="PENDING").order_by("created_at")[:50]
             
             if not events:
                 time.sleep(2)
@@ -25,7 +25,7 @@ class Command(BaseCommand):
             for event in events:
                 with transaction.atomic():
                     # Lock row
-                    e = OrderOutbox.objects.select_for_update().get(id=event.id)
+                    e = OutboxEvent.objects.select_for_update().get(id=event.id)
                     
                     if e.status != "PENDING":
                         continue

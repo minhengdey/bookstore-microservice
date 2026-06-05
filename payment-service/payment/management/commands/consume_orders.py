@@ -30,8 +30,14 @@ class Command(BaseCommand):
                 payload = json.loads(body)
                 event_type = payload.get("event_type")
                 
-                if event_type == "order_created":
+                # Support both wrapped (enterprise schema) and flat payloads
+                if "data" in payload:
                     data = payload.get("data", {})
+                else:
+                    data = payload
+
+                # order-service publishes 'order.checkout.started' via OutboxEvent
+                if event_type in ("order.checkout.started", "order_created"):
                     order_id = data.get("order_id")
                     amount = float(data.get("total_amount", 0))
                     
@@ -43,6 +49,8 @@ class Command(BaseCommand):
                         logger.warning(f"Payment for order {order_id} already exists. Skipping.")
                         ch.basic_ack(delivery_tag=method.delivery_tag)
                         return
+                    
+                    logger.info(f"Processing payment for order {order_id}, amount={amount}")
                         
                     # Mock Process Payment
                     with transaction.atomic():
@@ -62,11 +70,13 @@ class Command(BaseCommand):
                         }
                         PaymentOutbox.objects.create(
                             aggregate_id=str(payment.id),
-                            event_type="payment_completed",
+                            event_type="payment.succeeded",  # canonical event name
                             payload=outbox_payload
                         )
                     
                     logger.info(f"Successfully processed payment for order {order_id}")
+                else:
+                    logger.debug(f"Ignoring unhandled event_type: {event_type}")
                     
                 # Acknowledge
                 ch.basic_ack(delivery_tag=method.delivery_tag)

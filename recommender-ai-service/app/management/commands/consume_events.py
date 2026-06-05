@@ -11,7 +11,7 @@ class Command(BaseCommand):
     help = 'Consume events for Recommendation AI'
 
     def handle(self, *args, **kwargs):
-        rabbitmq_url = os.environ.get('RABBITMQ_URL', 'amqp://guest:guest@rabbitmq:5672/')
+        rabbitmq_url = os.environ.get('RABBITMQ_URL', 'amqp://user:password@rabbitmq:5672/')
         parameters = pika.URLParameters(rabbitmq_url)
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()

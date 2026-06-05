@@ -1,5 +1,6 @@
 import uuid
 from decimal import Decimal
+import os
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
@@ -147,27 +148,39 @@ class OrderSagaManager:
         try:
             order = Order.objects.select_for_update().get(id=order_id)
             if order.status != 'PAYMENT_PROCESSING':
+                logger.debug(f"Skipping payment succeeded handling for order {order_id} with status {order.status}")
                 return
-                
-            order.status = 'WAITING_INVENTORY_CONFIRM'
-            order.save()
-            OrderStatusHistory.objects.create(order=order, status='WAITING_INVENTORY_CONFIRM', reason='Payment succeeded')
-            
-            saga = order.saga
-            saga.current_step = 'INVENTORY_CONFIRM'
-            saga.save()
-            
-            OutboxEvent.objects.create(
-                aggregate_id=order.id,
-                aggregate_type='Order',
-                event_type='inventory.stock.confirm.requested',
-                message_id=uuid.uuid4(),
-                payload={
-                    "event_version": "v1",
-                    "order_id": str(order.id),
-                    "correlation_id": str(order.correlation_id)
-                }
-            )
+            # Determine if inventory confirmation should be skipped based on environment flag
+            skip_confirm = os.getenv('SKIP_INVENTORY_CONFIRM', 'false').lower() == 'true'
+            if skip_confirm:
+                order.status = 'COMPLETED'
+                order.save()
+                OrderStatusHistory.objects.create(order=order, status='COMPLETED', reason='Payment succeeded, inventory confirm skipped')
+                saga = order.saga
+                saga.status = 'SUCCESS'
+                saga.save()
+                logger.info(f"Order {order.id} marked COMPLETED without inventory confirmation (SKIP_INVENTORY_CONFIRM)" )
+                # No outbox event for inventory confirm
+            else:
+                order.status = 'WAITING_INVENTORY_CONFIRM'
+                order.save()
+                OrderStatusHistory.objects.create(order=order, status='WAITING_INVENTORY_CONFIRM', reason='Payment succeeded')
+
+                saga = order.saga
+                saga.current_step = 'INVENTORY_CONFIRM'
+                saga.save()
+
+                OutboxEvent.objects.create(
+                    aggregate_id=order.id,
+                    aggregate_type='Order',
+                    event_type='inventory.stock.confirm.requested',
+                    message_id=uuid.uuid4(),
+                    payload={
+                        "event_version": "v1",
+                        "order_id": str(order.id),
+                        "correlation_id": str(order.correlation_id)
+                    }
+                )
         except Order.DoesNotExist:
             pass
 
