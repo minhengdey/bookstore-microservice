@@ -21,6 +21,7 @@ ORDER_STATUS_MAP = {
     
     # Legacy statuses
     "pending_payment": "Chờ thanh toán",
+    "paid":            "Đã thanh toán",
     "pending":         "Chờ xử lý",
     "confirmed":       "Đã xác nhận",
     "processing":      "Đang xử lý",

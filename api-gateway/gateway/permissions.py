@@ -8,6 +8,8 @@ from django.shortcuts import redirect, render
 
 
 def _user(request):
+    if not getattr(request, "jwt_payload", None):
+        return {}
     return request.session.get("user") or {}
 
 

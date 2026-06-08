@@ -19,10 +19,10 @@ import logging
 
 import jwt
 from django.shortcuts import redirect
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET    = os.environ.get("JWT_SECRET_KEY", "ecommerce-jwt-secret-dev")
 JWT_ALGORITHM = "HS256"
 
 # Routes that never require a token
@@ -50,10 +50,14 @@ def _is_public(path: str) -> bool:
 
 def _decode(token: str):
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        print(f"[DEBUG] Decoded JWT successfully: {payload}")
+        return payload
     except jwt.ExpiredSignatureError:
+        print("[DEBUG] JWT expired")
         logger.debug("JWT expired")
     except jwt.InvalidTokenError as e:
+        print(f"[DEBUG] Invalid JWT: {e}")
         logger.debug(f"Invalid JWT: {e}")
     return None
 
@@ -68,12 +72,17 @@ class JWTAuthMiddleware:
         auth_header = request.META.get("HTTP_AUTHORIZATION", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
+            print(f"[DEBUG] Found token from header: {token[:10]}...")
         elif "access_token" in request.session:
             token = request.session["access_token"]
+            print(f"[DEBUG] Found token from session: {token[:10]}...")
+        else:
+            print("[DEBUG] No token found in request")
 
         # ── 2. Decode & attach user context ──────────────────────────────────
         payload = _decode(token) if token else None
         request.jwt_payload = payload   # None if unauthenticated / expired
+        print(f"[DEBUG] Request payload set to: {payload}")
 
         # ── 3. Guard protected routes (HTML only) ─────────────────────────────
         accepts_html = "text/html" in request.META.get("HTTP_ACCEPT", "")

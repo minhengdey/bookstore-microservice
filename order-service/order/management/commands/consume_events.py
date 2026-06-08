@@ -62,7 +62,21 @@ class Command(BaseCommand):
                 elif routing_key == 'inventory.stock.confirmed':
                     OrderSagaManager.handle_inventory_confirmed(order_id)
                 elif routing_key in ['payment.succeeded', 'payment_completed']:
-                    OrderSagaManager.handle_payment_succeeded(order_id)
+                    try:
+                        int_order_id = int(order_id)
+                        from order.legacy_models import LegacyOrder
+                        legacy_order = LegacyOrder.objects.filter(id=int_order_id).first()
+                        if legacy_order and legacy_order.status == 'pending_payment':
+                            legacy_order.status = 'paid'
+                            legacy_order.save(update_fields=['status'])
+                            self.stdout.write(self.style.SUCCESS(f"Updated LegacyOrder {int_order_id} status to paid"))
+                    except (ValueError, TypeError):
+                        pass
+
+                    try:
+                        OrderSagaManager.handle_payment_succeeded(order_id)
+                    except Exception as e:
+                        self.stdout.write(self.style.WARNING(f"OrderSagaManager skipped or failed for {order_id}: {e}"))
                 elif routing_key in ['payment.failed', 'payment_failed']:
                     reason = payload.get('reason', 'Payment failed') if 'data' not in payload else data.get('reason', 'Payment failed')
                     OrderSagaManager.handle_payment_failed(order_id, reason)

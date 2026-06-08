@@ -227,10 +227,11 @@ def _pagination_context(payload, request, extra_query=None):
 def _auth_headers(request) -> dict:
     """Build X-User-* headers from the validated JWT payload."""
     payload = getattr(request, "jwt_payload", None)
+    print(f"[DEBUG _auth_headers] Request payload is: {payload}")
     if not payload:
         return {}
     roles = payload.get("roles", [])
-    return {
+    headers = {
         "X-User-Id":   str(payload.get("user_id", "")),
         "X-Roles":     (",".join(roles) if isinstance(roles, list) else str(roles)).lower(),
         "X-User-Role": (",".join(roles) if isinstance(roles, list) else str(roles)).lower(),
@@ -240,6 +241,8 @@ def _auth_headers(request) -> dict:
         "X-User-Status": str(payload.get("status", "ACTIVE")),
         "X-Role-Version": str(payload.get("role_version", 1)),
     }
+    print(f"[DEBUG _auth_headers] Returning headers: {headers}")
+    return headers
 
 
 def _get(url, request=None, cache_ttl=0, **kwargs):
@@ -849,13 +852,66 @@ def customer_orders(request, customer_id):
     orders = _list_data(orders_payload)
     orders = _enrich_orders_with_customer_name(request, orders)
     customer_name = orders[0].get("customer_name") if orders else None
-    return render(request, "orders.html", {
+    response = render(request, "orders.html", {
         "orders": orders,
         "orders_pagination": _pagination_context(orders_payload, request),
         "customer_id": customer_id,
         "customer_name": customer_name,
         "order_success_msg": success_msg,
     })
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response
+
+
+@require_auth
+def order_status_api(request):
+    """API endpoint for AJAX polling of order statuses."""
+    eid = _entity_id(request)
+    if not eid:
+        from django.http import JsonResponse
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+        
+    ids_param = request.GET.get("ids", "")
+    if not ids_param:
+        from django.http import JsonResponse
+        return JsonResponse({"statuses": {}})
+        
+    try:
+        ids = [int(x.strip()) for x in ids_param.split(",") if x.strip().isdigit()]
+    except ValueError:
+        ids = []
+        
+    if not ids:
+        from django.http import JsonResponse
+        return JsonResponse({"statuses": {}})
+        
+    orders_payload = _get(f"{SVC['order']}/orders/", request, params={"customer_id": eid})
+    orders = _list_data(orders_payload)
+    
+    statuses = {}
+    from gateway.templatetags.custom_filters import vi_status
+    for o in orders:
+        oid = o.get("id")
+        if oid in ids:
+            status_raw = o.get("status")
+            badge = "badge-warning"
+            if status_raw in ('paid', 'COMPLETED', 'WAITING_INVENTORY_CONFIRM'):
+                badge = "badge-info"
+            elif status_raw == "delivered":
+                badge = "badge-success"
+            elif status_raw in ("cancelled", "failed_payment"):
+                badge = "badge-danger"
+                
+            statuses[str(oid)] = {
+                "raw": status_raw,
+                "vi": vi_status(status_raw),
+                "badge": badge
+            }
+            
+    from django.http import JsonResponse
+    return JsonResponse({"statuses": statuses})
 
 
 @require_customer_or_staff

@@ -26,6 +26,7 @@ urlpatterns = [
     path("orders/<int:order_id>/",               views.order_detail, name="order_detail"),
     path("orders/<int:order_id>/pay/",            views.order_pay,   name="order_pay"),
     path("orders/customer/<int:customer_id>/",   views.customer_orders, name="customer_orders"),
+    path("orders/api/status/",                    views.order_status_api, name="order_status_api"),
     path("recommendations/",                      views.recommendation_list, name="recommendations"),
 
     # ── Catalog ────────────────────────────────────────────────────────────────

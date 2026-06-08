@@ -8,7 +8,7 @@ from functools import wraps
 from rest_framework.response import Response
 from rest_framework import status
 
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "bookstore-super-secret-jwt-2026")
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "ecommerce-super-secret-jwt-2026")
 JWT_ALGORITHM = "HS256"
 
 INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "internal-dev-token")

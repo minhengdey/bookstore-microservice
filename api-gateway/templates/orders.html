@@ -31,7 +31,7 @@
             </thead>
             <tbody>
                 {% for order in orders %}
-                <tr>
+                <tr data-order-id="{{ order.id }}">
                     <td>
                         <a href="{% url 'order_detail' order.id %}"><span class="badge" style="cursor:pointer;">{{ order.id }}</span></a>
                     </td>
@@ -45,7 +45,7 @@
                     <td>{{ order.order_date_fmt }}</td>
                     <td>
                         <span
-                            class="badge {% if order.status == 'delivered' %}badge-success{% elif order.status == 'cancelled' %}badge-danger{% else %}badge-warning{% endif %}">
+                            class="badge {% if order.status == 'delivered' %}badge-success{% elif order.status == 'paid' or order.status == 'COMPLETED' or order.status == 'WAITING_INVENTORY_CONFIRM' %}badge-info{% elif order.status == 'cancelled' or order.status == 'failed_payment' %}badge-danger{% else %}badge-warning{% endif %}">
                             {{ order.status|vi_status }}
                         </span>
                     </td>
@@ -79,4 +79,46 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // Collect all order IDs that are currently in warning state (e.g. pending_payment)
+    const pendingRows = document.querySelectorAll("tr[data-order-id]");
+    const pendingIds = Array.from(pendingRows).map(row => row.getAttribute("data-order-id")).filter(id => {
+        const badge = document.querySelector(`tr[data-order-id="${id}"] .badge-warning`);
+        return badge !== null;
+    });
+    
+    if (pendingIds.length === 0) return;
+    
+    const pollInterval = setInterval(() => {
+        fetch(`/orders/api/status/?ids=${pendingIds.join(',')}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.statuses) {
+                    let needsReload = false;
+                    for (const [id, info] of Object.entries(data.statuses)) {
+                        const row = document.querySelector(`tr[data-order-id="${id}"]`);
+                        if (row) {
+                            const badge = row.querySelector('.badge');
+                            if (badge && badge.innerText.trim() !== info.vi) {
+                                // If status changed from pending to paid, reload page
+                                if (info.raw === 'paid' || info.raw === 'COMPLETED' || info.raw === 'WAITING_INVENTORY_CONFIRM') {
+                                    needsReload = true;
+                                } else {
+                                    badge.className = `badge ${info.badge}`;
+                                    badge.innerText = info.vi;
+                                }
+                            }
+                        }
+                    }
+                    if (needsReload) {
+                        window.location.reload();
+                    }
+                }
+            })
+            .catch(err => console.error("Polling error:", err));
+    }, 3000);
+});
+</script>
 {% endblock %}
