@@ -1,23 +1,29 @@
 from django.db import models
 
 class OrderStatus(models.TextChoices):
-    PENDING = "pending", "Pending"
-    CONFIRMED = "confirmed", "Confirmed"
-    PROCESSING = "processing", "Processing"
-    SHIPPED = "shipped", "Shipped"
-    DELIVERED = "delivered", "Delivered"
-    CANCELLED = "cancelled", "Cancelled"
-    PENDING_PAYMENT = "pending_payment", "Pending Payment"
-    PAID = "paid", "Paid"
-    FAILED_PAYMENT = "failed_payment", "Failed Payment"
+    PENDING_PAYMENT = "PENDING_PAYMENT", "Pending Payment"
+    PAID = "PAID", "Paid"
+    PROCESSING = "PROCESSING", "Processing"
+    SHIPPING = "SHIPPING", "Shipping"
+    DELIVERED = "DELIVERED", "Delivered"
+    CANCELLED = "CANCELLED", "Cancelled"
+    RETURN_REQUESTED = "RETURN_REQUESTED", "Return Requested"
+    RETURNED = "RETURNED", "Returned"
+    REFUNDED = "REFUNDED", "Refunded"
 
 class LegacyOrder(models.Model):
     customer_id = models.IntegerField()
     order_date = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.PENDING_PAYMENT)
+    status = models.CharField(max_length=50, choices=OrderStatus.choices, default=OrderStatus.PENDING_PAYMENT)
     shipping_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    
+    # Snapshots
+    address_id = models.IntegerField(null=True, blank=True)
+    shipping_address_snapshot = models.JSONField(null=True, blank=True)
+    voucher_code = models.CharField(max_length=50, blank=True)
+    
     admin_id = models.IntegerField(null=True, blank=True)
     notes = models.TextField(blank=True)
 
@@ -31,6 +37,9 @@ class LegacyOrder(models.Model):
 class LegacyOrderItem(models.Model):
     order = models.ForeignKey(LegacyOrder, on_delete=models.CASCADE, related_name="items")
     product_id = models.IntegerField()
+    variant_id = models.IntegerField(null=True, blank=True)
+    product_name = models.CharField(max_length=255, blank=True)
+    variant_name = models.CharField(max_length=255, blank=True)
     quantity = models.IntegerField()
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
     discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)

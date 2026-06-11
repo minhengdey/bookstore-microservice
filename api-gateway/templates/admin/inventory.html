@@ -1,0 +1,102 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 style="margin: 0; font-size: 1.8rem;">Quản lý Tồn Kho</h1>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+    <!-- Lịch sử giao dịch -->
+    <div class="card">
+        <h3 style="margin-top: 0;">Lịch sử Giao dịch (Inventory Transactions)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Thời gian</th>
+                    <th>Loại</th>
+                    <th>Sản phẩm / Biến thể</th>
+                    <th>Thay đổi</th>
+                    <th>Tồn sau đó</th>
+                    <th>Mã tham chiếu</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in transactions %}
+                <tr>
+                    <td style="color: var(--text-muted); font-size: 0.9rem;">{{ tx.created_at|slice:":10" }} {{ tx.created_at|slice:"11:16" }}</td>
+                    <td>
+                        {% if tx.transaction_type == 'IMPORT' %}<span style="color: var(--secondary); font-weight: 600;">Nhập kho</span>{% endif %}
+                        {% if tx.transaction_type == 'EXPORT' %}<span style="color: var(--danger); font-weight: 600;">Xuất kho</span>{% endif %}
+                        {% if tx.transaction_type == 'ORDER' %}<span style="color: var(--primary); font-weight: 600;">Đơn hàng</span>{% endif %}
+                        {% if tx.transaction_type == 'RETURN' %}<span style="color: #F59E0B; font-weight: 600;">Hoàn trả</span>{% endif %}
+                        {% if tx.transaction_type == 'ADJUST' %}<span style="color: var(--text-muted); font-weight: 600;">Điều chỉnh</span>{% endif %}
+                    </td>
+                    <td>
+                        {{ tx.product_name|default:'N/A' }}
+                        {% if tx.variant_name %}<br><small style="color: var(--text-muted);">{{ tx.variant_name }}</small>{% endif %}
+                    </td>
+                    <td style="font-weight: bold; {% if tx.quantity_changed > 0 %}color: var(--secondary);{% elif tx.quantity_changed < 0 %}color: var(--danger);{% endif %}">
+                        {% if tx.quantity_changed > 0 %}+{% endif %}{{ tx.quantity_changed }}
+                    </td>
+                    <td>{{ tx.stock_after }}</td>
+                    <td style="font-size: 0.9rem; color: var(--text-muted);">{{ tx.reference_id|default:'-' }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có giao dịch tồn kho nào</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Form tạo giao dịch thủ công -->
+    <div class="card">
+        <h3 style="margin-top: 0;">Ghi nhận Tồn Kho Mới</h3>
+        <form method="POST">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Sản phẩm <span style="color: red;">*</span></label>
+                <select name="product_id" class="form-control" required>
+                    <option value="">Chọn sản phẩm</option>
+                    {% for p in products %}
+                    <option value="{{ p.id }}">{{ p.name }} (Kho hiện tại: {{ p.stock }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Loại giao dịch <span style="color: red;">*</span></label>
+                <select name="transaction_type" class="form-control" required>
+                    <option value="IMPORT">Nhập kho (+)</option>
+                    <option value="EXPORT">Xuất kho (-)</option>
+                    <option value="ADJUST">Điều chỉnh (Reset)</option>
+                </select>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>Mức thay đổi</label>
+                    <input type="number" name="quantity_changed" class="form-control" required placeholder="VD: 10, -5">
+                </div>
+                <div class="form-group">
+                    <label>Tồn sau cùng</label>
+                    <input type="number" name="stock_after" class="form-control" required placeholder="Tồn kho sau khi đổi">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Mã tham chiếu (Mã phiếu nhập, ID Đơn hàng...)</label>
+                <input type="text" name="reference_id" class="form-control">
+            </div>
+            
+            <div class="form-group">
+                <label>Ghi chú</label>
+                <textarea name="notes" class="form-control" rows="2"></textarea>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Tạo Giao dịch</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

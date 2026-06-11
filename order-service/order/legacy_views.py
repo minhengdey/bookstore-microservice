@@ -131,7 +131,7 @@ class OrderMetricsView(APIView):
     @require_internal
     def get(self, request):
         total_orders = Order.objects.count()
-        total_revenue = Order.objects.filter(status="delivered").aggregate(Sum('total_amount'))['total_amount__sum'] or 0
+        total_revenue = Order.objects.filter(status="DELIVERED").aggregate(Sum('total_amount'))['total_amount__sum'] or 0
         status_counts = Order.objects.values('status').annotate(count=Count('id'))
         status_data = {item['status']: item['count'] for item in status_counts}
 
@@ -152,4 +152,33 @@ class InternalBulkOrderStatusView(APIView):
             statuses = {o.id: o.status for o in orders}
             return Response({"statuses": statuses})
         except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class OrderReturnRequestView(APIView):
+    @require_customer
+    def post(self, request, pk):
+        try:
+            ctx = request.user_ctx
+            customer_id = int(ctx.get("entity_id") or 0)
+            order = _order_svc.request_return(pk, customer_id=customer_id)
+            return Response(OrderSerializer(order).data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StaffBulkOrderUpdateView(APIView):
+    @require_staff
+    def post(self, request):
+        order_ids = request.data.get("order_ids", [])
+        action = request.data.get("action")
+        new_status = request.data.get("status")
+        if not order_ids:
+            return Response({"error": "order_ids is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not action and not new_status:
+            return Response({"error": "action or status is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            result = _order_svc.bulk_update_status(order_ids, action=action, new_status=new_status)
+            return Response(result)
+        except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

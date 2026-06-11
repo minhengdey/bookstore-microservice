@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "django.contrib.sessions",
+    "django.contrib.messages",
     "django.contrib.staticfiles",
     "gateway",
 ]
@@ -27,6 +28,7 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
     "gateway.middleware.JWTAuthMiddleware",
 ]
 
@@ -41,6 +43,7 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.request",
                 "django.template.context_processors.csrf",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
@@ -75,7 +78,10 @@ SERVICE_URLS = {
     "pay":         os.environ.get("PAY_SERVICE_URL",         "http://payment-service:8000"),
     "ship":        os.environ.get("SHIP_SERVICE_URL",        "http://shipping-service:8000"),
     "recommender": os.environ.get("RECOMMENDER_URL",         "http://recommender-ai-service:8000"),
+    "promotion":   os.environ.get("PROMOTION_SERVICE_URL",   "http://promotion-service:8000"),
+    "interaction": os.environ.get("INTERACTION_SERVICE_URL", "http://interaction-service:8000"),
 }
+SERVICE_URLS["interaction_api"] = SERVICE_URLS["interaction"].rstrip("/") + "/api/v1/interactions"
 
 # Proxy / secure settings (environment-driven; safe defaults for local/dev)
 USE_X_FORWARDED_HOST = True  # Always trust X-Forwarded-Host from nginx

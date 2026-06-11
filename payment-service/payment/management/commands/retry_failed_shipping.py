@@ -3,7 +3,7 @@ import logging
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.timezone import now
-from payment.models import Payment, ShippingStatus
+from payment.legacy_models import Payment, ShippingStatus
 from common.client import InternalClient
 import os
 

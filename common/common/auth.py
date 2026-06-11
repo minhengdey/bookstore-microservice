@@ -24,9 +24,32 @@ def decode_jwt(token: str) -> dict:
     except jwt.PyJWTError as e:
         raise ValueError(str(e))
 
+def _parse_roles(role_header):
+    if not role_header:
+        return []
+    return [r.strip().lower() for r in str(role_header).split(",") if r.strip()]
+
+
+def _has_any_role(role_header, allowed_roles):
+    roles = _parse_roles(role_header)
+    allowed = {r.lower() for r in allowed_roles}
+    if "manager" in allowed:
+        allowed.update(["admin", "super_admin"])
+    return any(r in allowed for r in roles)
+
+
+def _primary_role(role_header):
+    roles = _parse_roles(role_header)
+    for preferred in ("admin", "super_admin", "manager", "staff", "seller", "customer"):
+        if preferred in roles:
+            return preferred
+    return roles[0] if roles else ""
+
+
 def _get_context_from_headers(request):
     user_id = request.META.get("HTTP_X_USER_ID")
-    role = request.META.get("HTTP_X_USER_ROLE") or request.META.get("HTTP_X_ROLE")
+    role_header = request.META.get("HTTP_X_USER_ROLE") or request.META.get("HTTP_X_ROLE")
+    role = _primary_role(role_header)
     entity_id = request.META.get("HTTP_X_ENTITY_ID") or user_id
     
     # Fallback to direct decoding if headers are missing (for local dev)
@@ -70,7 +93,8 @@ def _require_role(allowed_roles: list):
             user_id, role, entity_id = _get_context_from_headers(request)
             if not user_id:
                 return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
-            if role not in allowed_roles:
+            role_header = request.META.get("HTTP_X_USER_ROLE") or request.META.get("HTTP_X_ROLE")
+            if not _has_any_role(role_header, allowed_roles):
                 return Response({"error": "Forbidden: Requires specific role"}, status=status.HTTP_403_FORBIDDEN)
             _attach_context(request, user_id, role, entity_id)
             return view_func(view_instance, request, *args, **kwargs)
@@ -80,6 +104,27 @@ def _require_role(allowed_roles: list):
 def require_customer(view_func): return _require_role(["customer"])(view_func)
 def require_staff(view_func): return _require_role(["staff", "manager", "admin"])(view_func)
 def require_manager(view_func): return _require_role(["manager", "admin"])(view_func)
+
+
+def _require_role_fn(allowed_roles: list):
+    """Decorator cho function-based views (@api_view)."""
+    def decorator(view_func):
+        @functools.wraps(view_func)
+        def wrapper(request, *args, **kwargs):
+            user_id, role, entity_id = _get_context_from_headers(request)
+            if not user_id:
+                return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+            role_header = request.META.get("HTTP_X_USER_ROLE") or request.META.get("HTTP_X_ROLE")
+            if not _has_any_role(role_header, allowed_roles):
+                return Response({"error": "Forbidden: Requires specific role"}, status=status.HTTP_403_FORBIDDEN)
+            _attach_context(request, user_id, role, entity_id)
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+require_staff_fn = _require_role_fn(["staff", "manager", "admin"])
+require_manager_fn = _require_role_fn(["manager", "admin"])
 
 def require_internal(fn):
     @functools.wraps(fn)

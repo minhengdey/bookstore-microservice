@@ -4,6 +4,16 @@
 <h2 style="margin-bottom:20px;font-size:1.4rem;font-weight:700;color:#0f172a;">
     {% if is_customer %}Cửa hàng trực tuyến{% else %}Quản lý hệ thống{% endif %}
 </h2>
+
+{% if is_customer %}
+<div class="card" style="background: linear-gradient(90deg, #ff7e5f 0%, #feb47b 100%); color: white; display: flex; justify-content: space-between; align-items: center; padding: 30px; border-radius: 20px;">
+    <div>
+        <h2 style="color: white; margin-bottom: 10px; font-size: 2rem;">Siêu Sale Giữa Tháng!</h2>
+        <p style="font-size: 1.1rem; opacity: 0.9;">Giảm giá lên đến 50% cho hàng ngàn sản phẩm hot. Nhanh tay kẻo lỡ!</p>
+    </div>
+    <a href="/promotions/" class="btn" style="background: white; color: #ff7e5f; padding: 12px 24px; font-weight: bold; border-radius: 30px;">Xem Ngay</a>
+</div>
+{% endif %}
 <div class="stats">
     <div class="stat">
         <div class="num">{{ total_products }}</div>
@@ -30,6 +40,7 @@
         {% if is_customer %}
         {% if request.session.user.entity_id %}
         <a href="/cart/{{ request.session.user.entity_id }}/" class="btn btn-success">Giỏ hàng</a>
+        <a href="/wishlist/" class="btn" style="background: var(--primary-light); color: var(--primary);">❤️ Yêu thích</a>
         <a href="/recommendations/" class="btn btn-primary">Đề xuất AI</a>
         <a href="/orders/" class="btn btn-secondary">Đơn hàng của tôi</a>
         {% endif %}
@@ -45,7 +56,7 @@
         💖 Gợi ý dành riêng cho bạn
     </h2>
     <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 20px;">
-        Dựa trên sở thích của bạn, AI của chúng mình đã chọn ra những quyển sách này đấy!
+        Dựa trên sở thích của bạn, AI đã chọn ra những sản phẩm phù hợp nhất!
     </p>
 
     {% if recommendations %}

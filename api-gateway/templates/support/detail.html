@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}{{ ticket.subject }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">{{ ticket.subject }}</h2>
+    <a href="/support/" class="btn btn-secondary">Quay lại</a>
+</div>
+
+<div class="card" style="margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+        <span>
+            {% if ticket.status == 'OPEN' %}
+            <span style="background: #FEE2E2; color: #991B1B; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">Chờ xử lý</span>
+            {% elif ticket.status == 'IN_PROGRESS' %}
+            <span style="background: #DBEAFE; color: #1E40AF; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">Đang xử lý</span>
+            {% elif ticket.status == 'RESOLVED' %}
+            <span style="background: #D1FAE5; color: #065F46; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">Đã giải quyết</span>
+            {% else %}
+            <span style="background: #F3F4F6; color: #374151; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">Đã đóng</span>
+            {% endif %}
+        </span>
+        <span style="color: #6B7280; font-size: 0.9rem;">{{ ticket.created_at|slice:":10" }} {{ ticket.created_at|slice:"11:16" }}</span>
+    </div>
+    <p style="white-space: pre-wrap; line-height: 1.6; margin: 0;">{{ ticket.content }}</p>
+    {% if ticket.order_id %}
+    <p style="margin-top: 12px; font-size: 0.9rem; color: #6B7280;">Liên quan đơn hàng: <a href="/orders/{{ ticket.order_id }}/">#{{ ticket.order_id }}</a></p>
+    {% endif %}
+</div>
+
+<h3 style="margin-bottom: 12px;">Trao đổi</h3>
+<div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
+    {% for reply in ticket.replies %}
+    <div style="background: {% if reply.is_staff %}#EFF6FF{% else %}#F9FAFB{% endif %}; padding: 16px; border-radius: 10px; border-left: 4px solid {% if reply.is_staff %}#3B82F6{% else %}#D1D5DB{% endif %};">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem;">
+            <strong>{% if reply.is_staff %}Nhân viên hỗ trợ{% else %}Bạn{% endif %}</strong>
+            <span style="color: #6B7280;">{{ reply.created_at|slice:":10" }} {{ reply.created_at|slice:"11:16" }}</span>
+        </div>
+        <div style="white-space: pre-wrap;">{{ reply.message }}</div>
+    </div>
+    {% empty %}
+    <p style="color: #6B7280; text-align: center;">Chưa có phản hồi từ nhân viên.</p>
+    {% endfor %}
+</div>
+
+{% if ticket.status != 'CLOSED' %}
+<div class="card">
+    <h3 style="margin-top: 0;">Gửi tin nhắn</h3>
+    <form method="POST">
+        {% csrf_token %}
+        <textarea name="message" rows="4" required placeholder="Nhập tin nhắn của bạn..." style="width: 100%; padding: 10px; border: 1px solid #E5E7EB; border-radius: 8px; font-family: inherit; margin-bottom: 12px;"></textarea>
+        <button type="submit" class="btn btn-primary">Gửi</button>
+    </form>
+</div>
+{% else %}
+<p style="color: #6B7280; text-align: center;">Ticket đã đóng. Không thể gửi thêm tin nhắn.</p>
+{% endif %}
+{% endblock %}

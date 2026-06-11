@@ -30,7 +30,6 @@ PUBLIC_PATHS = {
     "/",
     "/login/",
     "/register/",
-    "/staff/login/",
     "/auth/refresh/",
 }
 

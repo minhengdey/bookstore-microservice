@@ -2,7 +2,7 @@ from django.db import transaction
 import redis
 import json
 import os
-from .models import Product, Category
+from .models import Product, Category, Brand, ProductVariant
 
 redis_host = os.environ.get("REDIS_HOST", "redis")
 redis_port = int(os.environ.get("REDIS_PORT", 6379))
@@ -24,11 +24,55 @@ class CategoryService:
         if not c: raise ValueError(f"Category {pk} not found")
         return c
     def create(self, data): return Category.objects.create(**data)
+    def update(self, pk, data):
+        c = self.get(pk)
+        for k, v in data.items():
+            setattr(c, k, v)
+        c.save()
+        return c
+
+class BrandService:
+    def list(self): return Brand.objects.all()
+    def get(self, pk):
+        b = Brand.objects.filter(pk=pk).first()
+        if not b: raise ValueError(f"Brand {pk} not found")
+        return b
+    def create(self, data): return Brand.objects.create(**data)
+    def update(self, pk, data):
+        b = self.get(pk)
+        for k, v in data.items():
+            setattr(b, k, v)
+        b.save()
+        return b
+
+class ProductVariantService:
+    def get(self, pk):
+        v = ProductVariant.objects.filter(pk=pk).first()
+        if not v: raise ValueError(f"Variant {pk} not found")
+        return v
+    def create(self, data):
+        v = ProductVariant.objects.create(**data)
+        invalidate_product_cache(v.product_id)
+        return v
+    def update(self, pk, data):
+        v = self.get(pk)
+        for k, val in data.items():
+            setattr(v, k, val)
+        v.save()
+        invalidate_product_cache(v.product_id)
+        return v
+    def delete(self, pk):
+        v = self.get(pk)
+        p_id = v.product_id
+        v.delete()
+        invalidate_product_cache(p_id)
+
 
 class ProductService:
-    def list(self): return Product.objects.select_related("category").all()
+    def list(self): return Product.objects.select_related("category", "brand").prefetch_related("variants").all()
     def get(self, pk):
-        p = Product.objects.select_related("category").filter(pk=pk).first()
+        p = Product.objects.select_related("category", "brand").prefetch_related("variants").filter(pk=pk).first()
+
         if not p: raise ValueError(f"Product {pk} not found")
         return p
 
@@ -83,6 +127,15 @@ class ProductService:
                     quantity=item["quantity"],
                     status="RESERVED"
                 )
+                from .models import InventoryTransaction
+                InventoryTransaction.objects.create(
+                    product=product,
+                    transaction_type='ORDER',
+                    quantity_changed=-item["quantity"],
+                    stock_after=product.stock,
+                    reference_id=str(order_id),
+                    notes="Deducted for order"
+                )
                 
                 invalidate_product_cache(product.id)
                 
@@ -107,6 +160,15 @@ class ProductService:
                         product=product,
                         quantity=item["quantity"],
                         status="RELEASED"
+                    )
+                    from .models import InventoryTransaction
+                    InventoryTransaction.objects.create(
+                        product=product,
+                        transaction_type='RETURN',
+                        quantity_changed=item["quantity"],
+                        stock_after=product.stock,
+                        reference_id=str(order_id),
+                        notes="Released stock from cancelled order"
                     )
                     
                     invalidate_product_cache(product.id)

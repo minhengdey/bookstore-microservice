@@ -1,0 +1,37 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 style="margin: 0; font-size: 1.8rem;">Quản lý Thương hiệu</h1>
+    <a href="/admin/brands/create/" class="btn btn-primary">+ Thêm Thương hiệu</a>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Tên thương hiệu</th>
+                <th>Mô tả</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for brand in brands %}
+            <tr>
+                <td>#{{ brand.id }}</td>
+                <td style="font-weight: 600;">{{ brand.name }}</td>
+                <td style="color: var(--text-muted);">{{ brand.description|truncatechars:50 }}</td>
+                <td>
+                    <a href="/admin/brands/{{ brand.id }}/edit/" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.9rem;">Sửa</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có thương hiệu nào</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

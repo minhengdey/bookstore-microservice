@@ -1,0 +1,27 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 style="margin: 0; font-size: 1.8rem;">Thêm Danh mục</h1>
+    <a href="/admin/categories/" class="btn btn-secondary">Quay lại</a>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form method="POST">
+        {% csrf_token %}
+        <div class="form-group">
+            <label>Tên danh mục <span style="color: red;">*</span></label>
+            <input type="text" name="name" class="form-control" required placeholder="Ví dụ: Điện thoại, Laptop...">
+        </div>
+        
+        <div class="form-group">
+            <label>Mô tả</label>
+            <textarea name="description" class="form-control" rows="4" placeholder="Thông tin chi tiết về danh mục này..."></textarea>
+        </div>
+        
+        <div style="margin-top: 24px;">
+            <button type="submit" class="btn btn-primary">Lưu Danh mục</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

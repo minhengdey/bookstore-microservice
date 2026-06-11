@@ -1,6 +1,7 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from common.auth import require_manager_fn
 from app.services.recommendation_pipeline import RecommendationPipeline
 
 @api_view(['GET'])
@@ -50,7 +51,7 @@ def track_feedback(request):
         return Response({"error": str(e)}, status=400)
 
 @api_view(['POST'])
-@permission_classes([AllowAny]) # In reality, protect this!
+@require_manager_fn
 def rollback_model(request):
     from app.models import ModelVersion
     

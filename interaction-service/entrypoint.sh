@@ -6,6 +6,7 @@ done
 echo "PostgreSQL started"
 
 echo "Running migrations..."
+python manage.py makemigrations interaction
 python manage.py migrate
 python manage.py seed_mock || true
 

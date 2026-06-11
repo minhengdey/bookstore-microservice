@@ -6,7 +6,7 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CartItem
-        fields = ["id", "cart", "product_id", "quantity", "unit_price", "line_total"]
+        fields = ["id", "cart", "product_id", "variant_id", "quantity", "unit_price", "line_total"]
         read_only_fields = ["cart"]
 
     def get_line_total(self, obj):

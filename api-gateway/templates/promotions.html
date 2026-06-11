@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 class="page-title">🎉 Khuyến Mãi Hấp Dẫn</h2>
+</div>
+
+<div class="card" style="margin-bottom: 24px;">
+    <h3 style="color: var(--primary); margin-bottom: 16px;">⚡ Flash Sales</h3>
+    {% if flash_sales %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px;">
+        {% for sale in flash_sales %}
+        <div class="card" style="border: 1px solid var(--primary-light);">
+            <div style="font-weight: 700; font-size: 1.2rem; color: #ff7e5f; margin-bottom: 8px;">{{ sale.name }}</div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 12px;">
+                Kết thúc: {{ sale.end_date|date:"d/m/Y H:i" }}
+            </div>
+            <a href="/products/" class="btn btn-primary btn-sm">Xem sản phẩm</a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary);">Hiện chưa có chương trình Flash Sale nào đang diễn ra.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h3 style="color: var(--primary); margin-bottom: 16px;">🎟️ Mã Giảm Giá (Vouchers)</h3>
+    {% if vouchers %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+        {% for voucher in vouchers %}
+        <div class="card" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 1px dashed #22c55e;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 1.5rem; font-weight: 900; color: #166534;">{{ voucher.code }}</div>
+                <button onclick="navigator.clipboard.writeText('{{ voucher.code }}'); alert('Đã sao chép mã!')" class="btn btn-secondary btn-sm" style="margin: 0; background: white;">Copy</button>
+            </div>
+            <div style="margin-top: 12px; font-weight: 600; color: #15803d;">
+                {% if voucher.discount_percentage %}
+                Giảm {{ voucher.discount_percentage }}%
+                {% else %}
+                Giảm {{ voucher.discount_amount|vnd }}
+                {% endif %}
+            </div>
+            <div style="font-size: 0.85rem; color: #166534; margin-top: 4px;">Đơn tối thiểu: {{ voucher.min_order_value|vnd }}</div>
+            <div style="font-size: 0.85rem; color: #166534; margin-top: 4px; opacity: 0.8;">Hạn: {{ voucher.end_date|date:"d/m/Y H:i" }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary);">Hiện chưa có mã giảm giá nào.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Portal — E-Commerce</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0EA5E9;
+            --primary-dark: #0284C7;
+            --secondary: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+            --bg-color: #F0F9FF;
+            --surface: #FFFFFF;
+            --text-main: #0F172A;
+            --text-muted: #64748B;
+            --border: #E2E8F0;
+        }
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-main); display: flex; min-height: 100vh; }
+        .sidebar { width: 260px; background: #0C4A6E; color: white; display: flex; flex-direction: column; flex-shrink: 0; }
+        .sidebar-header { padding: 20px; font-size: 1.3rem; font-weight: 700; text-align: center; border-bottom: 1px solid #075985; color: #7DD3FC; }
+        .sidebar-menu { list-style: none; padding: 0; margin: 0; flex: 1; }
+        .sidebar-menu li a { display: block; padding: 14px 20px; color: #BAE6FD; text-decoration: none; font-weight: 500; border-left: 4px solid transparent; }
+        .sidebar-menu li a:hover, .sidebar-menu li a.active { background: #075985; color: white; border-left-color: var(--primary); }
+        .main-content { flex: 1; display: flex; flex-direction: column; }
+        .topbar { background: var(--surface); padding: 15px 30px; display: flex; justify-content: flex-end; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .content-area { padding: 30px; flex: 1; overflow-y: auto; }
+        .card { background: var(--surface); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08); }
+        .btn { padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; border: none; text-decoration: none; display: inline-block; font-size: 0.9rem; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary { background: #E2E8F0; color: var(--text-main); }
+        .btn-success { background: var(--secondary); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; color: var(--text-muted); font-size: 0.85rem; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; }
+        .form-control { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; box-sizing: border-box; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: var(--surface); border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.06); }
+        .stat-card .num { font-size: 2rem; font-weight: 700; color: var(--primary); }
+        .stat-card .lbl { color: var(--text-muted); font-size: 0.85rem; margin-top: 4px; }
+        .messages { margin-bottom: 16px; }
+        .messages .msg { padding: 12px 16px; border-radius: 8px; margin-bottom: 8px; }
+        .messages .success { background: #D1FAE5; color: #065F46; }
+        .messages .warning { background: #FEF3C7; color: #92400E; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">Staff Portal</div>
+        <ul class="sidebar-menu">
+            <li><a href="/staff/dashboard/">Dashboard</a></li>
+            <li><a href="/staff/orders/">Đơn hàng</a></li>
+            <li><a href="/staff/customers/">Khách hàng</a></li>
+            <li><a href="/staff/tickets/">Hỗ trợ KH</a></li>
+        </ul>
+    </div>
+    <div class="main-content">
+        <div class="topbar">
+            <span style="font-weight: 600; margin-right: 20px;">{{ request.session.user.username }}</span>
+            <a href="/logout/" class="btn btn-secondary">Đăng xuất</a>
+            <a href="/" class="btn btn-primary" style="margin-left: 10px;">Về trang khách</a>
+        </div>
+        <div class="content-area">
+            {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                <div class="msg {{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</body>
+</html>

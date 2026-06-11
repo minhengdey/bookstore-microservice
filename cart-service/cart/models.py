@@ -13,6 +13,7 @@ class Cart(models.Model):
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name="items")
     product_id = models.IntegerField()
+    variant_id = models.IntegerField(null=True, blank=True)
     quantity = models.IntegerField(default=1)
     # Unit price is optional/snapshot price. Order-service is the source of truth.
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)

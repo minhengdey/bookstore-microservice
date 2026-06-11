@@ -110,6 +110,24 @@ services:
       timeout: 5s
       retries: 5
 
+  promotion-db:
+    image: postgres:15-alpine
+    ports:
+      - "55445:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME_PROMOTION:-promotion_db}
+    volumes:
+      - promotion_db_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   order-redis:
     image: redis:7-alpine
     ports:
@@ -451,6 +469,30 @@ services:
     networks:
       - ecommerce-net
 
+  # ── Promotion service ─────────────────────────────────────────────────────
+  promotion-service:
+    build: ./promotion-service
+    ports:
+      - "${PORT_PROMOTION:-8018}:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY_PROMOTION:-promotion-service-dev-key}
+      - DB_NAME=${DB_NAME_PROMOTION:-promotion_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=promotion-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+      - SERVICE_NAME=promotion-service
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service,notification-service,interaction-service,promotion-service,api-gateway
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
+    depends_on:
+      promotion-db:
+        condition: service_healthy
+    volumes:
+      - ./common:/app/common
+    networks:
+      - ecommerce-net
+
   # ── Product service (Consolidated Catalog & Product) ────────────────────────
   product-service:
     build: ./product-service
@@ -633,7 +675,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "6381:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -659,6 +701,7 @@ services:
       - cart-service
       - shipping-service
       - recommender-ai-service
+      - promotion-service
       - api-gateway
     networks:
       - ecommerce-net
@@ -679,6 +722,9 @@ services:
       - PAY_SERVICE_URL=http://payment-service:8000
       - SHIP_SERVICE_URL=http://shipping-service:8000
       - RECOMMENDER_URL=${RECOMMENDER_URL:-http://recommender-ai-service:8000}
+      - PROMOTION_SERVICE_URL=http://promotion-service:8000
+      - INTERACTION_SERVICE_URL=http://interaction-service:8000
+      - AUTH_SERVICE_URL=http://auth-service:8000
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-internal-dev-token}
       - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
       - SERVICE_NAME=api-gateway
@@ -790,6 +836,7 @@ services:
       - DB_HOST=interaction-db
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
     depends_on:
       interaction-db:
         condition: service_healthy
@@ -812,6 +859,7 @@ services:
       - DB_HOST=payment-db
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
     depends_on:
       payment-db:
         condition: service_healthy
@@ -834,6 +882,7 @@ services:
       - DB_HOST=payment-db
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
     depends_on:
       payment-db:
         condition: service_healthy
@@ -929,6 +978,7 @@ volumes:
   payment_db_data:
   notification_db_data:
   interaction_db_data:
+  promotion_db_data:
   product_db_data:
   shipping_db_data:
   user_db_data:

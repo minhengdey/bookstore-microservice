@@ -12,6 +12,26 @@ class ShippingMethodService:
         return m
     def create(self, data): return ShippingMethod.objects.create(**data)
 
+    def calculate_fee(self, method_id, total_weight=1.0, distance_km=10.0):
+        """Tính phí ship động: phí cơ bản + phụ phí theo khối lượng và khoảng cách."""
+        method = self.get(method_id)
+        base = float(method.rate)
+        weight = max(0.0, float(total_weight) - float(method.min_weight or 0))
+        distance = max(0.0, float(distance_km) - float(method.min_distance or 0))
+        weight_fee = weight * 5000
+        distance_fee = distance * 1000
+        total_fee = round(base + weight_fee + distance_fee)
+        return {
+            "shipping_method_id": method.id,
+            "method_name": method.method_name,
+            "base_rate": base,
+            "weight_fee": weight_fee,
+            "distance_fee": distance_fee,
+            "shipping_fee": total_fee,
+            "total_weight": total_weight,
+            "distance_km": distance_km,
+        }
+
 from django.db import IntegrityError
 
 class InvalidShippingTransition(Exception):

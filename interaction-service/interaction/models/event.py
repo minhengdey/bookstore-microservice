@@ -14,3 +14,6 @@ class InteractionEvent(AuditBaseModel):
     weight = models.FloatField()
     source = models.CharField(max_length=30, default="WEB")
     metadata = models.JSONField(default=dict, blank=True) # Device, platform, category, etc.
+
+    class Meta:
+        app_label = 'interaction'

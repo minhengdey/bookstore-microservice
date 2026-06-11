@@ -30,6 +30,23 @@
                 {% endfor %}
             </select>
         </div>
+        <div style="flex: 1; min-width: 150px;">
+            <label for="min_price">Giá từ</label>
+            <input type="number" id="min_price" name="min_price" value="{{ min_price }}" placeholder="0 đ">
+        </div>
+        <div style="flex: 1; min-width: 150px;">
+            <label for="max_price">Giá đến</label>
+            <input type="number" id="max_price" name="max_price" value="{{ max_price }}" placeholder="1.000.000 đ">
+        </div>
+        <div style="flex: 1; min-width: 150px;">
+            <label for="sort_by">Sắp xếp</label>
+            <select id="sort_by" name="sort_by">
+                <option value="id" {% if sort_by == 'id' %}selected{% endif %}>Mặc định</option>
+                <option value="price_asc" {% if sort_by == 'price_asc' %}selected{% endif %}>Giá tăng dần</option>
+                <option value="price_desc" {% if sort_by == 'price_desc' %}selected{% endif %}>Giá giảm dần</option>
+                <option value="newest" {% if sort_by == 'newest' %}selected{% endif %}>Mới nhất</option>
+            </select>
+        </div>
         <div>
             <button type="submit" class="btn btn-primary" style="margin-bottom: 0;">Lọc</button>
             <a href="/products/" class="btn btn-secondary" style="margin-bottom: 0;">Xóa lọc</a>

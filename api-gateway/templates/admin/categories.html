@@ -1,0 +1,37 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 style="margin: 0; font-size: 1.8rem;">Quản lý Danh mục</h1>
+    <a href="/admin/categories/create/" class="btn btn-primary">+ Thêm Danh mục</a>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Tên danh mục</th>
+                <th>Mô tả</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cat in categories %}
+            <tr>
+                <td>#{{ cat.id }}</td>
+                <td style="font-weight: 600;">{{ cat.name }}</td>
+                <td style="color: var(--text-muted);">{{ cat.description|truncatechars:50 }}</td>
+                <td>
+                    <a href="/admin/categories/{{ cat.id }}/edit/" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.9rem;">Sửa</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có danh mục nào</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

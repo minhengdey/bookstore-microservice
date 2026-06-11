@@ -1,0 +1,115 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<h1 style="margin: 0 0 24px; font-size: 1.8rem;">Quản lý AI Recommendation</h1>
+
+{% if messages %}
+<div style="margin-bottom: 16px;">
+    {% for message in messages %}
+    <div style="padding: 12px; border-radius: 8px; margin-bottom: 8px; background: {% if message.tags == 'success' %}#D1FAE5{% elif message.tags == 'warning' %}#FEF3C7{% else %}#FEE2E2{% endif %};">
+        {{ message }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+    <div class="card">
+        <h3 style="margin-top: 0;">Đánh giá Offline (BiLSTM)</h3>
+        {% if offline_models %}
+        <table>
+            <thead>
+                <tr><th>Model</th><th>Accuracy</th><th>F1-macro</th><th>F1-weighted</th><th>Epochs</th></tr>
+            </thead>
+            <tbody>
+                {% for m in offline_models %}
+                <tr {% if best_model and m.name == best_model.name %}style="background: #EEF2FF; font-weight: 600;"{% endif %}>
+                    <td>{{ m.name }}{% if best_model and m.name == best_model.name %} ★{% endif %}</td>
+                    <td>{{ m.accuracy|floatformat:4 }}</td>
+                    <td>{{ m.f1_macro|floatformat:4 }}</td>
+                    <td>{{ m.f1_weighted|floatformat:4 }}</td>
+                    <td>{{ m.epochs }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if best_model %}
+        <p style="margin-top: 12px; font-size: 0.9rem; color: var(--text-muted);">
+            Model tốt nhất: <strong>{{ best_model.name }}</strong> — Accuracy {{ best_model.accuracy|floatformat:2 }}, F1 {{ best_model.f1_macro|floatformat:4 }}
+        </p>
+        {% endif %}
+        {% else %}
+        <p style="color: var(--text-muted);">Chưa có dữ liệu đánh giá offline.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top: 0;">Huấn luyện Model</h3>
+        {% if retrain_running %}
+        <p style="color: var(--primary); font-weight: 600;">⏳ Huấn luyện đang chạy...</p>
+        {% else %}
+        <p style="color: var(--text-muted); margin-bottom: 16px;">Kích hoạt huấn luyện lại Collaborative Filtering từ dữ liệu hành vi + đơn hàng.</p>
+        {% endif %}
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="retrain">
+            <button type="submit" class="btn btn-primary" {% if retrain_running %}disabled{% endif %}>
+                Huấn luyện lại (Implicit CF)
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h3 style="margin-top: 0;">Model Versions (Production)</h3>
+    {% if versions %}
+    <table>
+        <thead>
+            <tr>
+                <th>Tên</th>
+                <th>Version</th>
+                <th>Loại</th>
+                <th>Trạng thái</th>
+                <th>Metric</th>
+                <th>Rollout</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in versions %}
+            <tr>
+                <td>{{ v.model_name }}</td>
+                <td>v{{ v.version }}</td>
+                <td>{{ v.model_type }}</td>
+                <td>
+                    <span style="font-weight: 600; color: {% if v.status == 'ACTIVE' %}var(--secondary){% else %}var(--text-muted){% endif %};">
+                        {{ v.status }}
+                    </span>
+                </td>
+                <td>{{ v.metric_name }}: {{ v.metric_value|floatformat:4 }}</td>
+                <td>{{ v.rollout_percentage }}%</td>
+                <td style="display: flex; gap: 6px;">
+                    {% if v.status != 'ACTIVE' %}
+                    <form method="POST" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="activate">
+                        <input type="hidden" name="model_id" value="{{ v.id }}">
+                        <button type="submit" class="btn btn-primary" style="padding: 4px 8px; font-size: 0.8rem;">Kích hoạt</button>
+                    </form>
+                    {% endif %}
+                    <form method="POST" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="rollback">
+                        <input type="hidden" name="model_version" value="{{ v.model_name }}_v{{ v.version }}">
+                        <button type="submit" class="btn btn-danger" style="padding: 4px 8px; font-size: 0.8rem;">Rollback</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--text-muted);">Chưa có model version trong registry. Chạy huấn luyện để tạo model mới.</p>
+    {% endif %}
+</div>
+{% endblock %}

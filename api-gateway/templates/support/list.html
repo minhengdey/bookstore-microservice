@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Hỗ trợ khách hàng{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="margin: 0;">Hỗ trợ khách hàng</h2>
+    <a href="/support/new/" class="btn btn-primary">Tạo ticket mới</a>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Tiêu đề</th>
+                <th>Trạng thái</th>
+                <th>Ngày tạo</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ticket in tickets %}
+            <tr>
+                <td style="font-weight: 600;">{{ ticket.subject }}</td>
+                <td>
+                    {% if ticket.status == 'OPEN' %}
+                    <span style="color: #EF4444; font-weight: 600;">Chờ xử lý</span>
+                    {% elif ticket.status == 'IN_PROGRESS' %}
+                    <span style="color: #0EA5E9; font-weight: 600;">Đang xử lý</span>
+                    {% elif ticket.status == 'RESOLVED' %}
+                    <span style="color: #10B981; font-weight: 600;">Đã giải quyết</span>
+                    {% else %}
+                    <span style="color: #6B7280;">Đã đóng</span>
+                    {% endif %}
+                </td>
+                <td style="color: #6B7280; font-size: 0.9rem;">{{ ticket.created_at|slice:":10" }} {{ ticket.created_at|slice:"11:16" }}</td>
+                <td><a href="/support/{{ ticket.id }}/" class="btn btn-secondary" style="padding: 4px 12px; font-size: 0.85rem;">Xem chi tiết</a></td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: #6B7280; padding: 24px;">
+                    Bạn chưa có ticket nào. <a href="/support/new/">Tạo ticket mới</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -75,15 +75,81 @@
             {% endif %}
             <form method="POST" class="product-add-cart">
                 {% csrf_token %}
-                <label style="font-weight: 700; white-space: nowrap;">Số lượng:</label>
-                <input type="number" name="quantity" value="1" min="1" required>
-                <button type="submit" class="btn btn-primary" style="padding: 10px 24px;">
-                    🛒 Thêm vào giỏ hàng
-                </button>
+                {% if product.variants %}
+                <div style="margin-bottom: 16px; width: 100%;">
+                    <label style="font-weight: 700; display: block; margin-bottom: 8px;">Chọn biến thể:</label>
+                    <select name="variant_id" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
+                        {% for variant in product.variants %}
+                        <option value="{{ variant.id }}">{{ variant.color }} - {{ variant.size }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+                    <label style="font-weight: 700; white-space: nowrap;">Số lượng:</label>
+                    <input type="number" name="quantity" value="1" min="1" required style="width: 80px;">
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 16px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1; padding: 10px 24px;">
+                        🛒 Thêm vào giỏ hàng
+                    </button>
+                    <button type="submit" formaction="/products/{{ product.id }}/wishlist/" class="btn {% if in_wishlist %}btn-secondary{% else %}btn-success{% endif %}" style="padding: 10px 24px;" title="Wishlist">
+                        {% if in_wishlist %}💔 Bỏ thích{% else %}❤️ Yêu thích{% endif %}
+                    </button>
+                </div>
             </form>
         </div>
         {% endif %}
     </div>
+</div>
+
+<div class="card" style="margin-top: 24px;">
+    <h2>Đánh giá từ khách hàng</h2>
+    
+    {% if is_customer %}
+    <div style="margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border);">
+        <h4 style="margin-bottom: 12px;">Viết đánh giá của bạn</h4>
+        <form method="POST" action="/products/{{ product.id }}/review/">
+            {% csrf_token %}
+            <div style="margin-bottom: 12px;">
+                <label>Số sao (1-5):</label>
+                <input type="number" name="rating" min="1" max="5" value="5" required style="width: 80px;">
+            </div>
+            <div style="margin-bottom: 12px;">
+                <textarea name="comment_text" rows="3" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);" placeholder="Chia sẻ cảm nhận của bạn về sản phẩm này..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Gửi đánh giá</button>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if reviews %}
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+        {% for review in reviews %}
+        <div style="padding: 16px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <div>
+                    <span style="font-weight: bold;">Khách hàng #{{ review.customer_id }}</span>
+                    {% if review.verified_purchase %}
+                    <span style="color: #16a34a; font-size: 0.85rem; margin-left: 8px; font-weight: bold;">✓ Đã mua hàng</span>
+                    {% endif %}
+                </div>
+                <div style="color: #f59e0b; font-weight: bold;">{{ review.rating }} ⭐</div>
+            </div>
+            <p style="margin: 0; color: var(--text-secondary);">{{ review.comment_text|default:"Không có bình luận" }}</p>
+            {% if review.image_urls %}
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+                {% for img in review.image_urls %}
+                <img src="{{ img }}" alt="Review Image" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border);">
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--text-secondary);">Chưa có đánh giá nào cho sản phẩm này.</p>
+    {% endif %}
 </div>
 
 {% if recommendations %}

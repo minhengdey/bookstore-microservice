@@ -66,9 +66,21 @@ def require_roles(*allowed_roles):
         return wrapped
     return decorator
 
+require_staff = require_roles("staff", "manager", "admin")
+require_manager = require_roles("manager", "admin")
+
 
 def require_customer_or_staff(view_func):
     """Customer chỉ truy cập được dữ liệu của chính mình (kiểm tra ở view). Staff/manager được phép."""
+    @wraps(view_func)
+    def wrapped(request, *args, **kwargs):
+        if not _roles(request):
+            return redirect("login")
+        return view_func(request, *args, **kwargs)
+    return wrapped
+
+def require_auth(view_func):
+    """Yêu cầu người dùng đã đăng nhập."""
     @wraps(view_func)
     def wrapped(request, *args, **kwargs):
         if not _roles(request):

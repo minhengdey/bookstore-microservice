@@ -27,6 +27,7 @@
                     <th>Ngày</th>
                     <th>Trạng thái</th>
                     <th>Tổng</th>
+                    <th>Thao tác</th>
                 </tr>
             </thead>
             <tbody>
@@ -45,11 +46,20 @@
                     <td>{{ order.order_date_fmt }}</td>
                     <td>
                         <span
-                            class="badge {% if order.status == 'delivered' %}badge-success{% elif order.status == 'paid' or order.status == 'COMPLETED' or order.status == 'WAITING_INVENTORY_CONFIRM' %}badge-info{% elif order.status == 'cancelled' or order.status == 'failed_payment' %}badge-danger{% else %}badge-warning{% endif %}">
+                            class="badge status-badge {% if order.status == 'delivered' %}badge-success{% elif order.status == 'paid' or order.status == 'COMPLETED' or order.status == 'WAITING_INVENTORY_CONFIRM' %}badge-info{% elif order.status == 'cancelled' or order.status == 'failed_payment' %}badge-danger{% else %}badge-warning{% endif %}">
                             {{ order.status|vi_status }}
                         </span>
                     </td>
                     <td><strong>{{ order.total_amount|vnd }}</strong></td>
+                    <td>
+                        <div style="display: flex; gap: 8px;">
+                            <a href="/orders/{{ order.id }}/" class="btn btn-secondary btn-sm" style="background: var(--bg-color); color: var(--text-primary); border-color: var(--border);">Chi tiết</a>
+                            <a href="/orders/{{ order.id }}/tracking/" class="btn btn-primary btn-sm">📍 Theo dõi</a>
+                            {% if order.status == 'PENDING_PAYMENT' or order.status == 'pending_payment' %}
+                            <a href="/orders/{{ order.id }}/pay/" class="btn btn-success btn-sm">💳 Thanh toán</a>
+                            {% endif %}
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -85,7 +95,7 @@ document.addEventListener("DOMContentLoaded", function() {
     // Collect all order IDs that are currently in warning state (e.g. pending_payment)
     const pendingRows = document.querySelectorAll("tr[data-order-id]");
     const pendingIds = Array.from(pendingRows).map(row => row.getAttribute("data-order-id")).filter(id => {
-        const badge = document.querySelector(`tr[data-order-id="${id}"] .badge-warning`);
+        const badge = document.querySelector(`tr[data-order-id="${id}"] .status-badge.badge-warning`);
         return badge !== null;
     });
     
@@ -100,13 +110,13 @@ document.addEventListener("DOMContentLoaded", function() {
                     for (const [id, info] of Object.entries(data.statuses)) {
                         const row = document.querySelector(`tr[data-order-id="${id}"]`);
                         if (row) {
-                            const badge = row.querySelector('.badge');
+                            const badge = row.querySelector('.status-badge');
                             if (badge && badge.innerText.trim() !== info.vi) {
                                 // If status changed from pending to paid, reload page
                                 if (info.raw === 'paid' || info.raw === 'COMPLETED' || info.raw === 'WAITING_INVENTORY_CONFIRM') {
                                     needsReload = true;
                                 } else {
-                                    badge.className = `badge ${info.badge}`;
+                                    badge.className = `badge status-badge ${info.badge}`;
                                     badge.innerText = info.vi;
                                 }
                             }

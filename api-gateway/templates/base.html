@@ -18,14 +18,23 @@
         <nav>
             <a href="/">Trang chủ</a>
             <a href="/products/">Sản phẩm</a>
+            <a href="/promotions/">Khuyến mãi</a>
             {% if request.session.user %}
-            {% if request.session.user.role == 'customer' %}
+            {% if 'CUSTOMER' in request.session.user.roles and 'STAFF' not in request.session.user.roles and 'ADMIN' not in request.session.user.roles %}
+            <a href="/wishlist/">Yêu thích</a>
+            <a href="/profile/">Hồ sơ</a>
             <a href="/cart/{{ request.session.user.entity_id }}/">Giỏ hàng</a>
             <a href="/recommendations/">Đề xuất AI</a>
             <a href="/orders/">Đơn hàng</a>
+            <a href="/returns/">Trả hàng</a>
+            <a href="/support/">Hỗ trợ</a>
             {% else %}
             <a href="/catalog/">Danh mục</a>
             <a href="/orders/">Đơn hàng</a>
+            <a href="/staff/dashboard/">Staff Portal</a>
+            {% if 'ADMIN' in request.session.user.roles or 'MANAGER' in request.session.user.roles %}
+            <a href="/admin/dashboard/">Admin Portal</a>
+            {% endif %}
             {% endif %}
             {% endif %}
         </nav>
@@ -34,7 +43,7 @@
             <span class="user-badge">
                 👤 {{ request.session.user.username }}
                 <span class="role-pill">
-                    {% if request.session.user.role == 'customer' %}Khách hàng{% elif request.session.user.role == 'staff' %}Nhân viên{% elif request.session.user.role == 'admin' %}Quản trị{% else %}{{ request.session.user.role }}{% endif %}
+                    {% if 'STAFF' in request.session.user.roles %}Nhân viên{% elif 'ADMIN' in request.session.user.roles or 'MANAGER' in request.session.user.roles %}Quản trị{% else %}Khách hàng{% endif %}
                 </span>
             </span>
             <a href="/logout/" class="btn-logout">Đăng xuất</a>

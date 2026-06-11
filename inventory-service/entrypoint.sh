@@ -7,6 +7,7 @@ done
 echo "PostgreSQL started"
 
 echo "Running migrations..."
+python manage.py makemigrations inventory --noinput
 python manage.py migrate
 python manage.py seed_mock || true
 

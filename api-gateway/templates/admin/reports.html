@@ -1,0 +1,55 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<h1 style="margin: 0 0 24px; font-size: 1.8rem;">Báo cáo & Thống kê</h1>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px;">
+    <div class="card" style="text-align: center;">
+        <div style="font-size: 1.8rem; font-weight: 700; color: var(--primary);">{{ total_revenue }}</div>
+        <div style="color: var(--text-muted); font-size: 0.85rem;">Doanh thu</div>
+    </div>
+    <div class="card" style="text-align: center;">
+        <div style="font-size: 1.8rem; font-weight: 700;">{{ total_orders }}</div>
+        <div style="color: var(--text-muted); font-size: 0.85rem;">Tổng đơn</div>
+    </div>
+    <div class="card" style="text-align: center;">
+        <div style="font-size: 1.8rem; font-weight: 700; color: var(--secondary);">{{ promotion_count }}</div>
+        <div style="color: var(--text-muted); font-size: 0.85rem;">Khuyến mãi</div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    <div class="card">
+        <h3 style="margin-top: 0;">Đơn hàng theo trạng thái</h3>
+        <table>
+            <thead><tr><th>Trạng thái</th><th>Số lượng</th></tr></thead>
+            <tbody>
+                {% for status, count in status_breakdown.items %}
+                <tr>
+                    <td>{{ status }}</td>
+                    <td style="font-weight: 600;">{{ count }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="2" style="text-align: center; color: var(--text-muted);">Chưa có dữ liệu</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card">
+        <h3 style="margin-top: 0;">Top sản phẩm bán chạy</h3>
+        <table>
+            <thead><tr><th>Sản phẩm</th><th>Số lượng</th></tr></thead>
+            <tbody>
+                {% for item in top_sellers %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td style="font-weight: 600;">{{ item.qty }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="2" style="text-align: center; color: var(--text-muted);">Chưa có dữ liệu bán hàng</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

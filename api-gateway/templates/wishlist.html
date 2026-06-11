@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 class="page-title">❤️ Danh sách yêu thích của tôi</h2>
+    <a href="/products/" class="btn btn-secondary">Tiếp tục mua sắm</a>
+</div>
+
+<div class="card">
+    {% if products %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
+        {% for item in products %}
+        <div class="card" style="padding: 16px; margin-bottom: 0; transition: transform 0.3s; border-color: var(--border);">
+            <div style="height: 130px; margin-bottom: 12px; border-radius: 18px; overflow: hidden; background: linear-gradient(135deg, var(--primary-light), var(--secondary-light)); display:flex; align-items:center; justify-content:center;">
+                {% if item.image_url %}
+                <img src="{{ item.image_url }}" alt="{{ item.name }}" style="width:100%; height:100%; object-fit:cover; display:block;">
+                {% else %}
+                🛍️
+                {% endif %}
+            </div>
+            <h4 style="font-size: 1rem; margin-bottom: 8px; color: var(--text-primary); height: 3rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                <a href="/products/{{ item.id }}/" style="color: inherit; text-decoration: none;">{{ item.name }}</a>
+            </h4>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <span style="font-weight: 700; color: var(--primary); font-size: 1.1rem;">{{ item.price|vnd }}</span>
+                <form method="POST" action="/products/{{ item.id }}/wishlist/" style="margin:0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-secondary btn-sm" style="border-radius: 20px;">Bỏ thích</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+        <p>Bạn chưa thêm sản phẩm nào vào danh sách yêu thích. Hãy dạo quanh cửa hàng và chọn những món đồ bạn thích nhé!</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

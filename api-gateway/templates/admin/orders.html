@@ -1,0 +1,71 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 style="margin: 0; font-size: 1.8rem;">Quản lý Đơn hàng</h1>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Mã Đơn</th>
+                <th>Ngày tạo</th>
+                <th>Khách hàng</th>
+                <th>Tổng tiền</th>
+                <th>Trạng thái</th>
+                <th>Thao tác Cập nhật Trạng thái</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr>
+                <td style="font-weight: 600;">#{{ order.id }}</td>
+                <td style="color: var(--text-muted); font-size: 0.9rem;">{{ order.order_date|slice:":10" }} {{ order.order_date|slice:"11:16" }}</td>
+                <td>ID: {{ order.customer_id }}</td>
+                <td style="font-weight: bold; color: var(--danger);">{{ order.total_amount|floatformat:0 }} đ</td>
+                <td>
+                    <span style="background: var(--bg-color); padding: 4px 8px; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
+                        {{ order.status }}
+                    </span>
+                </td>
+                <td>
+                    <form method="POST" action="/admin/orders/{{ order.id }}/status/" style="display: flex; gap: 8px;">
+                        {% csrf_token %}
+                        <select name="status" class="form-control" style="width: 150px; padding: 4px; font-size: 0.85rem;">
+                            <!-- State Machine Validation ở backend sẽ chặn các trạng thái không hợp lệ -->
+                            <!-- Ở đây liệt kê các trạng thái có thể chuyển -->
+                            <option value="">-- Đổi trạng thái --</option>
+                            {% if order.status == 'PENDING_PAYMENT' %}
+                            <option value="PAID">Đã thanh toán (PAID)</option>
+                            <option value="CANCELLED">Hủy đơn (CANCELLED)</option>
+                            {% elif order.status == 'PAID' %}
+                            <option value="PROCESSING">Đang xử lý (PROCESSING)</option>
+                            <option value="REFUNDED">Hoàn tiền (REFUNDED)</option>
+                            {% elif order.status == 'PROCESSING' %}
+                            <option value="SHIPPING">Đang giao hàng (SHIPPING)</option>
+                            <option value="CANCELLED">Hủy đơn (CANCELLED)</option>
+                            {% elif order.status == 'SHIPPING' %}
+                            <option value="DELIVERED">Đã giao hàng (DELIVERED)</option>
+                            <option value="RETURN_REQUESTED">Yêu cầu hoàn trả (RETURN_REQUESTED)</option>
+                            {% elif order.status == 'DELIVERED' %}
+                            <option value="RETURN_REQUESTED">Yêu cầu hoàn trả (RETURN_REQUESTED)</option>
+                            {% elif order.status == 'RETURN_REQUESTED' %}
+                            <option value="RETURNED">Đã nhận hoàn trả (RETURNED)</option>
+                            {% elif order.status == 'RETURNED' %}
+                            <option value="REFUNDED">Hoàn tiền (REFUNDED)</option>
+                            {% endif %}
+                        </select>
+                        <button type="submit" class="btn btn-primary" style="padding: 4px 8px; font-size: 0.85rem;">Cập nhật</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có đơn hàng nào</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

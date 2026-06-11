@@ -1,0 +1,46 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 style="margin: 0; font-size: 1.8rem;">Quản lý Khách hàng</h1>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Họ và tên</th>
+                <th>SĐT</th>
+                <th>Điểm tích lũy</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in customers %}
+            <tr>
+                <td style="font-weight: 600;">#{{ customer.id }}</td>
+                <td>{{ customer.full_name|default:'-' }}</td>
+                <td>{{ customer.phone|default:'-' }}</td>
+                <td>{{ customer.loyalty_points|default:0 }}</td>
+                <td>
+                    {% if customer.status == 'ACTIVE' %}
+                    <span style="color: var(--secondary); font-weight: 600;">Hoạt động</span>
+                    {% else %}
+                    <span style="color: var(--danger); font-weight: 600;">{{ customer.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/admin/customers/{{ customer.id }}/" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.9rem;">Xem chi tiết</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có khách hàng nào</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

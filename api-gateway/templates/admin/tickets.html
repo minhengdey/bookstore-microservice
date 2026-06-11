@@ -1,0 +1,52 @@
+{% extends "admin_base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 style="margin: 0; font-size: 1.8rem;">Hỗ trợ Khách hàng (Tickets)</h1>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Mã Ticket</th>
+                <th>Tiêu đề</th>
+                <th>Khách hàng</th>
+                <th>Đơn hàng</th>
+                <th>Trạng thái</th>
+                <th>Ngày tạo</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ticket in tickets %}
+            <tr>
+                <td style="font-weight: 600; font-size: 0.85rem;">{{ ticket.id|slice:":8" }}...</td>
+                <td>{{ ticket.subject }}</td>
+                <td>ID: {{ ticket.customer_id }}</td>
+                <td>{% if ticket.order_id %}<a href="/admin/orders/?search={{ ticket.order_id }}">#{{ ticket.order_id }}</a>{% else %}-{% endif %}</td>
+                <td>
+                    {% if ticket.status == 'OPEN' %}
+                    <span style="color: var(--danger); font-weight: 600;">Mới tạo (OPEN)</span>
+                    {% elif ticket.status == 'IN_PROGRESS' %}
+                    <span style="color: var(--primary); font-weight: 600;">Đang xử lý</span>
+                    {% elif ticket.status == 'RESOLVED' %}
+                    <span style="color: var(--secondary); font-weight: 600;">Đã giải quyết</span>
+                    {% else %}
+                    <span style="color: var(--text-muted); font-weight: 600;">Đã đóng</span>
+                    {% endif %}
+                </td>
+                <td style="color: var(--text-muted); font-size: 0.9rem;">{{ ticket.created_at|slice:":10" }} {{ ticket.created_at|slice:"11:16" }}</td>
+                <td>
+                    <a href="/admin/tickets/{% if ticket.id %}{{ ticket.id }}{% else %}{{ ticket.uuid }}{% endif %}/" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.9rem;">Xem / Trả lời</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có Ticket nào</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

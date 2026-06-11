@@ -32,25 +32,67 @@
             </tbody>
         </table>
     </div>
-    <div class="summary-row">
-        <span class="summary-total">Tổng: {{ cart.total_price|vnd }}</span>
-    </div>
 
-    <form method="POST">
+    <form method="POST" id="checkout-form">
         {% csrf_token %}
-        <div style="margin: 20px 0;">
-            <h3 style="margin-bottom: 12px; color: var(--text-primary);">Thông tin giao hàng</h3>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Địa chỉ giao hàng *</label>
-                <input type="text" name="address" required placeholder="Ví dụ: 123 Đường ABC, Phường X, Quận Y, TP. Z" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius);">
+        <div style="margin: 20px 0; display: grid; gap: 20px;">
+            <div>
+                <h3 style="margin-bottom: 12px; color: var(--text-primary);">Địa chỉ giao hàng *</h3>
+                {% if addresses %}
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                    {% for addr in addresses %}
+                        <label class="address-option" data-city="{{ addr.city }}" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; {% if addr.is_default %}border-color: var(--primary); background: var(--primary-light);{% endif %}">
+                            <input type="radio" name="address_id" value="{{ addr.id }}" required {% if addr.is_default %}checked{% endif %} style="margin-top: 4px;">
+                            <div>
+                                <strong>{{ addr.recipient_name }} - {{ addr.phone }}</strong>
+                                <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.9rem;">{{ addr.address_line }}, {{ addr.city }}{% if addr.state %}, {{ addr.state }}{% endif %}</p>
+                            </div>
+                        </label>
+                    {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="alert-warning" style="margin-bottom: 20px; padding: 12px; background: #fff3cd; color: #856404; border-radius: 8px;">Bạn chưa có địa chỉ nào. <a href="/profile/" style="text-decoration: underline; font-weight: bold;">Thêm địa chỉ mới</a>.</div>
+                {% endif %}
             </div>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Số điện thoại *</label>
-                <input type="text" name="phone" required placeholder="Nhập số điện thoại của bạn" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius);">
+
+            <div>
+                <h3 style="margin-bottom: 12px; color: var(--text-primary);">Phương thức vận chuyển *</h3>
+                <select name="shipping_method_id" id="shipping-method" required style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: white;">
+                    <option value="">-- Chọn phương thức giao hàng --</option>
+                    {% for method in shipping_methods %}
+                    <option value="{{ method.id }}" data-fee="{{ method.calculated_fee|default:method.rate }}">
+                        {{ method.method_name }} — {{ method.calculated_fee|default:method.rate|vnd }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <p id="fee-note" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 8px;">
+                    Phí ship tính theo khối lượng và khoảng cách từ kho đến địa chỉ giao hàng.
+                </p>
             </div>
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Ghi chú (Tùy chọn)</label>
-                <textarea name="notes" placeholder="Ghi chú thêm cho người giao hàng..." style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); min-height: 80px;"></textarea>
+
+            <div>
+                <h3 style="margin-bottom: 12px; color: var(--text-primary);">Mã giảm giá (Voucher)</h3>
+                <input type="text" name="promotion_code" placeholder="Nhập mã giảm giá..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius);">
+            </div>
+
+            <div>
+                <h3 style="margin-bottom: 12px; color: var(--text-primary);">Ghi chú (Tùy chọn)</h3>
+                <textarea name="notes" placeholder="Ghi chú thêm cho người giao hàng..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); min-height: 80px;"></textarea>
+            </div>
+        </div>
+
+        <div class="summary-row" style="background: var(--bg-color); padding: 16px; border-radius: 12px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span>Tạm tính:</span>
+                <span id="subtotal-display">{{ subtotal|vnd }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span>Phí vận chuyển:</span>
+                <span id="shipping-fee-display">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--border); padding-top: 8px;">
+                <span>Tổng thanh toán (ước tính):</span>
+                <span id="total-display" style="color: var(--primary);">{{ subtotal|vnd }}</span>
             </div>
         </div>
 
@@ -64,4 +106,29 @@
     <div class="page-actions"><a href="/cart/{{ customer_id }}/" class="btn btn-secondary">← Giỏ hàng</a></div>
     {% endif %}
 </div>
+
+{% if cart_items %}
+<script>
+(function() {
+    const subtotal = {{ subtotal|default:0 }};
+    const methodSelect = document.getElementById('shipping-method');
+    const feeDisplay = document.getElementById('shipping-fee-display');
+    const totalDisplay = document.getElementById('total-display');
+
+    function formatVnd(n) {
+        return Math.round(n).toLocaleString('vi-VN') + '₫';
+    }
+
+    function updateTotal() {
+        const opt = methodSelect.options[methodSelect.selectedIndex];
+        const fee = opt && opt.dataset.fee ? parseFloat(opt.dataset.fee) : 0;
+        feeDisplay.textContent = fee ? formatVnd(fee) : '—';
+        totalDisplay.textContent = formatVnd(subtotal + fee);
+    }
+
+    methodSelect.addEventListener('change', updateTotal);
+    updateTotal();
+})();
+</script>
+{% endif %}
 {% endblock %}

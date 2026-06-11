@@ -18,3 +18,7 @@ class OutboxEvent(models.Model):
     processed_at = models.DateTimeField(null=True, blank=True)
     next_retry_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = 'interaction'
+

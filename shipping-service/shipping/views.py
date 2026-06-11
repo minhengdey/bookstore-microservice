@@ -2,7 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from common.auth import require_auth, require_staff, require_internal
-from .services import ShippingService, ShippingMethodService
+from .services import ShippingService, ShippingMethodService, InvalidShippingTransition
+from .models import ShippingState
 from .serializers import ShippingSerializer, ShippingMethodSerializer
 
 _ship_svc = ShippingService()
@@ -94,4 +95,53 @@ class ShippingCreateView(APIView):
             shipping = _ship_svc.create_shipping(order_id)
             return Response(ShippingSerializer(shipping).data, status=status.HTTP_201_CREATED)
         except (KeyError, ValueError) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class ShippingByOrderView(APIView):
+    @require_auth
+    def get(self, request, order_id):
+        from .models import Shipping
+        shipping = Shipping.objects.filter(order_id=order_id).prefetch_related('statuses', 'address').first()
+        if not shipping:
+            return Response({"error": "Shipping not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(ShippingSerializer(shipping).data)
+
+
+class InternalShippingStatusView(APIView):
+    @require_internal
+    def post(self, request):
+        order_id = request.data.get("order_id")
+        new_status = request.data.get("status", "processing")
+        if not order_id:
+            return Response({"error": "order_id required"}, status=status.HTTP_400_BAD_REQUEST)
+        from .models import Shipping
+        shipping = Shipping.objects.filter(order_id=order_id).first()
+        if not shipping:
+            shipping = _ship_svc.create_shipping(int(order_id))
+        status_map = {
+            "in_transit": ShippingState.PROCESSING,
+            "delivered": ShippingState.SHIPPED,
+            "processing": ShippingState.PROCESSING,
+            "shipped": ShippingState.SHIPPED,
+        }
+        mapped = status_map.get(str(new_status).lower(), ShippingState.PROCESSING)
+        try:
+            shipping = _ship_svc.update_shipping_status(shipping.id, mapped, f"Synced from order-service: {new_status}")
+        except InvalidShippingTransition:
+            shipping.status = mapped
+            shipping.save(update_fields=["status"])
+            from .models import ShippingStatus
+            ShippingStatus.objects.create(shipping=shipping, status=mapped, description=f"Synced: {new_status}")
+        return Response(ShippingSerializer(shipping).data)
+
+
+class ShippingFeeCalculatorView(APIView):
+    @require_auth
+    def post(self, request):
+        try:
+            method_id = int(request.data.get("shipping_method_id"))
+            total_weight = float(request.data.get("total_weight", 1.0))
+            distance_km = float(request.data.get("distance_km", 10.0))
+            return Response(_method_svc.calculate_fee(method_id, total_weight, distance_km))
+        except (TypeError, ValueError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

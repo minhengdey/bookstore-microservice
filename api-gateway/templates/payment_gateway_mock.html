@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% block content %}
+<div class="card" style="max-width: 500px; margin: 40px auto; text-align: center;">
+    <h2 style="color: var(--primary); margin-bottom: 8px;">Cổng thanh toán {{ method_name }}</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 24px;">Bạn đang thanh toán cho đơn hàng <strong>#{{ order.id }}</strong></p>
+    
+    <div style="background: var(--bg-color); padding: 20px; border-radius: 12px; margin-bottom: 30px;">
+        <p style="font-size: 1.2rem; margin: 0 0 8px;">Số tiền cần thanh toán:</p>
+        <h1 style="color: var(--primary); margin: 0;">{{ amount|vnd }}</h1>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+        <a href="/orders/{{ order.id }}/pay/callback/?status=SUCCESS&method_id={{ method_id }}&amount={{ amount }}" class="btn btn-success" style="padding: 14px; font-size: 1.1rem;">
+            ✅ Xác nhận thanh toán thành công
+        </a>
+        <a href="/orders/{{ order.id }}/pay/callback/?status=FAILED&method_id={{ method_id }}&amount={{ amount }}" class="btn btn-danger" style="padding: 14px; font-size: 1.1rem;">
+            ❌ Mô phỏng thanh toán thất bại
+        </a>
+        <a href="/orders/{{ order.id }}/pay/callback/?status=CANCELLED" class="btn btn-secondary" style="padding: 14px; font-size: 1.1rem;">
+            Quay lại (Hủy thanh toán)
+        </a>
+    </div>
+</div>
+{% endblock %}

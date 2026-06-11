@@ -1,0 +1,56 @@
+{% extends "staff_base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h1 style="margin: 0; font-size: 1.8rem;">Khách hàng #{{ customer.id }}</h1>
+    <a href="/staff/customers/" class="btn btn-secondary">Quay lại</a>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px;">
+    <div class="card">
+        <h3 style="margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Thông tin</h3>
+        <p><strong>Họ tên:</strong> {{ customer.full_name|default:'-' }}</p>
+        <p><strong>SĐT:</strong> {{ customer.phone|default:'-' }}</p>
+        <p><strong>Điểm tích lũy:</strong> {{ customer.loyalty_points|default:0 }}</p>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Lịch sử Đơn hàng</h3>
+        <table>
+            <thead>
+                <tr><th>Mã Đơn</th><th>Ngày</th><th>Tổng tiền</th><th>Trạng thái</th></tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td style="font-weight: 600;"><a href="/staff/orders/">#{{ order.id }}</a></td>
+                    <td style="font-size: 0.9rem; color: var(--text-muted);">{{ order.order_date|slice:":10" }}</td>
+                    <td style="font-weight: bold;">{{ order.total_amount|floatformat:0 }} đ</td>
+                    <td>{{ order.status }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Chưa có đơn hàng</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if tickets %}
+<div class="card" style="margin-top: 24px;">
+    <h3 style="margin-top: 0;">Ticket hỗ trợ</h3>
+    <table>
+        <thead><tr><th>Tiêu đề</th><th>Trạng thái</th><th>Ngày</th></tr></thead>
+        <tbody>
+            {% for ticket in tickets %}
+            <tr>
+                <td><a href="/staff/tickets/{{ ticket.id }}/">{{ ticket.subject }}</a></td>
+                <td>{{ ticket.status }}</td>
+                <td>{{ ticket.created_at|slice:":10" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

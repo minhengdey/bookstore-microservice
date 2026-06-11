@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% block content %}
+<div class="card" style="max-width: 800px; margin: 0 auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">Theo dõi đơn hàng #{{ order.id }}</h2>
+        <a href="/orders/" class="btn btn-secondary btn-sm">Quay lại Đơn hàng</a>
+    </div>
+
+    {% if shipping %}
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px;">
+        <!-- Vận đơn info -->
+        <div style="background: var(--bg-color); padding: 16px; border-radius: 12px; height: fit-content;">
+            <h3 style="margin-top: 0;">Thông tin vận chuyển</h3>
+            <p><strong>Mã vận đơn:</strong> {{ shipping.tracking_number }}</p>
+            <p><strong>Trạng thái:</strong> <span class="badge" style="background: var(--primary);">{{ shipping.status }}</span></p>
+            {% if shipping.address %}
+            <p style="margin-top: 12px;"><strong>Địa chỉ giao:</strong></p>
+            <p style="color: var(--text-secondary); margin: 0;">
+                {{ shipping.address.recipient_name }} - {{ shipping.address.phone }}<br>
+                {{ shipping.address.address_line }}<br>
+                {{ shipping.address.city }}{% if shipping.address.state %}, {{ shipping.address.state }}{% endif %}
+            </p>
+            {% elif order.shipping_address_snapshot %}
+            <p style="margin-top: 12px;"><strong>Địa chỉ giao (Snapshot):</strong></p>
+            <p style="color: var(--text-secondary); margin: 0;">
+                {{ order.shipping_address_snapshot.recipient_name }} - {{ order.shipping_address_snapshot.phone }}<br>
+                {{ order.shipping_address_snapshot.address_line }}<br>
+                {{ order.shipping_address_snapshot.city }}
+            </p>
+            {% endif %}
+        </div>
+
+        <!-- Timeline -->
+        <div>
+            <h3 style="margin-top: 0; margin-bottom: 20px;">Lịch trình vận chuyển</h3>
+            {% if shipping.statuses %}
+                <div style="position: relative; padding-left: 20px;">
+                    <!-- Line -->
+                    <div style="position: absolute; left: 6px; top: 10px; bottom: 10px; width: 2px; background: var(--border);"></div>
+                    
+                    {% for st in shipping.statuses reversed %}
+                    <div style="position: relative; margin-bottom: 24px;">
+                        <!-- Dot -->
+                        <div style="position: absolute; left: -20px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: {% if forloop.first %}var(--primary){% else %}var(--border){% endif %}; border: 2px solid white;"></div>
+                        
+                        <div style="padding-left: 12px;">
+                            <strong style="display: block; color: {% if forloop.first %}var(--primary){% else %}var(--text-primary){% endif %};">{{ st.status }}</strong>
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.9rem;">{{ st.created_at|format_date }}</p>
+                            {% if st.description %}
+                            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.95rem;">{{ st.description }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty">Chưa có thông tin lịch trình.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="alert-warning" style="padding: 16px; background: #fff3cd; color: #856404; border-radius: 8px;">
+        Đơn hàng này chưa có thông tin vận chuyển. Vui lòng quay lại sau!
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

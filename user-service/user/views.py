@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from common.auth import require_auth, require_internal
-from .models import UserProfile, CustomerProfile, StaffProfile, SellerProfile, Role, UserStatus
+from .models import UserProfile, CustomerProfile, StaffProfile, SellerProfile, Role, UserStatus, WebAddress
 
 class UserProfileView(APIView):
     @require_internal
@@ -135,3 +135,118 @@ class PublicUserProfileView(APIView):
             return Response(data)
         except UserProfile.DoesNotExist:
             return Response({"error": "UserProfile not found"}, status=404)
+
+class CustomerListView(APIView):
+    @require_internal
+    def get(self, request):
+        customers = CustomerProfile.objects.select_related("user_profile").prefetch_related(
+            "user_profile__roles"
+        ).all()
+        results = []
+        for cp in customers:
+            user = cp.user_profile
+            roles = list(user.roles.values_list("name", flat=True))
+            results.append({
+                "id": cp.id,
+                "entity_id": cp.id,
+                "auth_user_id": str(user.auth_user_id),
+                "full_name": user.full_name,
+                "phone": user.phone,
+                "status": user.status,
+                "roles": roles,
+                "loyalty_points": cp.loyalty_points,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+            })
+        return Response(results)
+
+
+class CustomerDetailView(APIView):
+    @require_internal
+    def get(self, request, customer_id):
+        try:
+            cp = CustomerProfile.objects.select_related("user_profile").prefetch_related(
+                "user_profile__roles"
+            ).get(pk=customer_id)
+        except CustomerProfile.DoesNotExist:
+            return Response({"error": "Customer not found"}, status=404)
+        user = cp.user_profile
+        roles = list(user.roles.values_list("name", flat=True))
+        return Response({
+            "id": cp.id,
+            "entity_id": cp.id,
+            "auth_user_id": str(user.auth_user_id),
+            "full_name": user.full_name,
+            "phone": user.phone,
+            "status": user.status,
+            "roles": roles,
+            "loyalty_points": cp.loyalty_points,
+            "gender": user.gender,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        })
+
+
+class AddressListView(APIView):
+    @require_internal
+    def get(self, request, user_id):
+        profile = CustomerProfile.objects.filter(user_profile__auth_user_id=user_id).first()
+        if not profile:
+            return Response([])
+        addresses = WebAddress.objects.filter(customer=profile).order_by('-is_default', '-id').values(
+            "id", "recipient_name", "address_line", "city", "state", "country", "postal_code", "phone", "is_default"
+        )
+        return Response(list(addresses))
+
+    @require_internal
+    def post(self, request, user_id):
+        profile = CustomerProfile.objects.filter(user_profile__auth_user_id=user_id).first()
+        if not profile:
+            return Response({"error": "Customer profile not found"}, status=404)
+        
+        data = request.data
+        is_default = str(data.get("is_default")).lower() in ('true', '1')
+        
+        if not WebAddress.objects.filter(customer=profile).exists():
+            is_default = True
+            
+        if is_default:
+            WebAddress.objects.filter(customer=profile).update(is_default=False)
+            
+        addr = WebAddress.objects.create(
+            customer=profile,
+            recipient_name=data.get("recipient_name", ""),
+            address_line=data.get("address_line", ""),
+            city=data.get("city", ""),
+            state=data.get("state", ""),
+            country=data.get("country", ""),
+            postal_code=data.get("postal_code", ""),
+            phone=data.get("phone", ""),
+            is_default=is_default
+        )
+        return Response({"id": addr.id}, status=201)
+
+class AddressDetailView(APIView):
+    @require_internal
+    def put(self, request, user_id, address_id):
+        profile = CustomerProfile.objects.filter(user_profile__auth_user_id=user_id).first()
+        addr = WebAddress.objects.filter(customer=profile, id=address_id).first()
+        if not addr: return Response(status=404)
+        
+        data = request.data
+        if "is_default" in data:
+            is_default = str(data.get("is_default")).lower() in ('true', '1')
+            if is_default:
+                WebAddress.objects.filter(customer=profile).update(is_default=False)
+                addr.is_default = True
+            
+        addr.recipient_name = data.get("recipient_name", addr.recipient_name)
+        addr.address_line = data.get("address_line", addr.address_line)
+        addr.city = data.get("city", addr.city)
+        addr.phone = data.get("phone", addr.phone)
+        addr.save()
+        return Response({"status": "success"})
+
+    @require_internal
+    def delete(self, request, user_id, address_id):
+        profile = CustomerProfile.objects.filter(user_profile__auth_user_id=user_id).first()
+        WebAddress.objects.filter(customer=profile, id=address_id).delete()
+        return Response(status=204)
