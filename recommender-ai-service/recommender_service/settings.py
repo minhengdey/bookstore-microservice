@@ -45,7 +45,7 @@ INSTALLED_APPS = [
 ]
 
 CRONJOBS = [
-    ('0 2 * * *', 'django.core.management.call_command', ['train_ai'])
+    ('0 2 * * *', 'django.core.management.call_command', ['ensure_recommender_models', '--force']),
 ]
 
 MIDDLEWARE = [
@@ -93,6 +93,9 @@ IMPLICIT_CF_DATA_DIR = Path(
 )
 # Độ mạnh điểm ALS khi trộn với co-buy + behavior (càng lớn càng ưu tiên ALS)
 IMPLICIT_CF_ALS_WEIGHT = float(os.environ.get("IMPLICIT_CF_ALS_WEIGHT", "4.0"))
+COOCCURRENCE_WEIGHT = float(os.environ.get("COOCCURRENCE_WEIGHT", "3.0"))
+COPURCHASE_WEIGHT = float(os.environ.get("COPURCHASE_WEIGHT", "2.5"))
+CATEGORY_AFFINITY_WEIGHT = float(os.environ.get("CATEGORY_AFFINITY_WEIGHT", "2.0"))
 
 # Proxy / secure settings (environment-driven; safe defaults for local/dev)
 USE_X_FORWARDED_HOST = os.environ.get("USE_X_FORWARDED_HOST", "True").lower() == "true"

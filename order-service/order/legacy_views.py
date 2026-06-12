@@ -5,7 +5,7 @@ from django.db.models import Count, Sum
 from .legacy_services import OrderService, DiscountService
 from .legacy_serializers import OrderSerializer, DiscountSerializer
 from common.auth import require_auth, require_customer, require_staff, require_manager, require_internal
-from .legacy_models import LegacyOrder as Order
+from .legacy_models import LegacyOrder as Order, OrderStatus
 
 _order_svc    = OrderService()
 _discount_svc = DiscountService()
@@ -127,6 +127,49 @@ class DiscountListCreateView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+_PURCHASE_ORDER_STATUSES = (
+    OrderStatus.PENDING_PAYMENT,
+    OrderStatus.PAID,
+    OrderStatus.PROCESSING,
+    OrderStatus.SHIPPING,
+    OrderStatus.DELIVERED,
+)
+
+
+class InternalRecommenderOrdersView(APIView):
+    """Orders + purchase aggregates for recommender-ai-service (internal auth)."""
+
+    @require_internal
+    def get(self, request):
+        customer_id = request.query_params.get("customer_id")
+        qs = Order.objects.filter(status__in=_PURCHASE_ORDER_STATUSES).prefetch_related("items")
+        if customer_id:
+            try:
+                qs = qs.filter(customer_id=int(customer_id))
+            except (TypeError, ValueError):
+                return Response({"error": "Invalid customer_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        orders = []
+        by_customer: dict[int, set[int]] = {}
+        for order in qs:
+            product_ids = [int(item.product_id) for item in order.items.all()]
+            orders.append({
+                "customer_id": int(order.customer_id),
+                "items": [{"product_id": pid} for pid in product_ids],
+            })
+            bucket = by_customer.setdefault(int(order.customer_id), set())
+            bucket.update(product_ids)
+
+        purchase_signals = [
+            {"customer_id": cid, "purchase_ids": sorted(pids)}
+            for cid, pids in sorted(by_customer.items())
+        ]
+        return Response({
+            "orders": orders,
+            "purchase_signals": purchase_signals,
+        })
+
+
 class OrderMetricsView(APIView):
     @require_internal
     def get(self, request):
@@ -152,6 +195,18 @@ class InternalBulkOrderStatusView(APIView):
             statuses = {o.id: o.status for o in orders}
             return Response({"statuses": statuses})
         except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class InternalOrderMarkPaidView(APIView):
+    @require_internal
+    def post(self, request, pk):
+        try:
+            order = _order_svc.get_order(pk)
+            if order.status != OrderStatus.PAID:
+                order = _order_svc.update_status(pk, OrderStatus.PAID)
+            return Response(OrderSerializer(order).data)
+        except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 

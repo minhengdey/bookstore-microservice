@@ -13,8 +13,11 @@ class WishlistViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         customer_id = self.request.query_params.get('customer_id')
+        product_id = self.request.query_params.get('product_id')
         if customer_id:
             qs = qs.filter(customer_id=customer_id)
+        if product_id:
+            qs = qs.filter(product_id=product_id)
         return qs
 
 class ReviewViewSet(viewsets.ModelViewSet):

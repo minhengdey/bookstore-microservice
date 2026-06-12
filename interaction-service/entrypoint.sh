@@ -6,8 +6,8 @@ done
 echo "PostgreSQL started"
 
 echo "Running migrations..."
-python manage.py makemigrations interaction
-python manage.py migrate
+python manage.py makemigrations interaction --noinput
+python manage.py migrate --noinput
 python manage.py seed_mock || true
 
 if [ $# -eq 0 ]; then

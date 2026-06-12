@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 
 from .permissions import _role, _entity_id, require_roles, require_customer_or_staff, customer_can_only_own, require_auth
+from .behavior_tracking import track_behavior, track_order_purchases
 
 logger = logging.getLogger(__name__)
 SVC = settings.SERVICE_URLS
@@ -39,6 +40,12 @@ ORDER_STATUS_VI = {
     "REFUNDED": "Đã hoàn tiền",
     
     # Legacy statuses
+    "PENDING_PAYMENT": "Chờ thanh toán",
+    "PAID":            "Đã thanh toán",
+    "PROCESSING":      "Đang xử lý",
+    "SHIPPING":        "Đang giao",
+    "DELIVERED":       "Đã giao",
+    "CANCELLED":       "Đã hủy",
     "pending_payment": "Chờ thanh toán",
     "pending":         "Chờ xử lý",
     "confirmed":       "Đã xác nhận",
@@ -364,27 +371,7 @@ def _client_device(request):
 
 
 def _track_behavior_event(request, customer_id, product_id, action):
-    if customer_id is None:
-        return
-    if not request.session.session_key:
-        request.session.create()
-    try:
-        headers = _auth_headers(request)
-        requests.post(
-            f"{SVC['recommender']}/api/recommender/events/",
-            json={
-                "customer_id": int(customer_id),
-                "product_id": int(product_id),
-                "action": action,
-                "session_id": request.session.session_key,
-                "device": _client_device(request),
-                "persona": _role(request) or "anonymous",
-            },
-            headers=headers,
-            timeout=0.5,
-        )
-    except (TypeError, ValueError, requests.exceptions.RequestException) as e:
-        logger.debug("[behavior] skipped action=%s product=%s: %s", action, product_id, e)
+    track_behavior(request, customer_id, product_id, action)
 
 
 def _catalog_name_map(request, endpoint, field_name):
@@ -712,7 +699,9 @@ def product_review(request, product_id):
             "verified_purchase": True,
             "image_urls": []
         }
-        _post(f"{SVC['interaction_api']}/reviews/", json=payload, request=request)
+        resp = _post(f"{SVC['interaction_api']}/reviews/", json=payload, request=request)
+        if resp is not None and resp.status_code in (200, 201):
+            track_behavior(request, customer_id, int(product_id), "review")
         
     return redirect("product_detail", product_id=product_id)
 
@@ -726,7 +715,13 @@ def product_wishlist_toggle(request, product_id):
         if items:
             _delete(f"{SVC['interaction_api']}/wishlists/{items[0]['id']}/", request)
         else:
-            _post(f"{SVC['interaction_api']}/wishlists/", json={"customer_id": customer_id, "product_id": product_id}, request=request)
+            resp = _post(
+                f"{SVC['interaction_api']}/wishlists/",
+                json={"customer_id": customer_id, "product_id": product_id},
+                request=request,
+            )
+            if resp is not None and resp.status_code in (200, 201):
+                track_behavior(request, customer_id, int(product_id), "wishlist")
             
     return redirect(request.META.get('HTTP_REFERER', f"/products/{product_id}/"))
 
@@ -1041,6 +1036,7 @@ def order_pay(request, order_id):
                 request=request,
             )
             request.session["order_success"] = f"Đã đặt hàng #{order_id} thành công với hình thức COD."
+            track_order_purchases(request, order)
             return redirect("order_list")
         else:
             # Simulate Redirect to Payment Gateway (Mock)
@@ -1075,6 +1071,8 @@ def payment_callback(request, order_id):
         # Update payment status via payment-service if it has such API, 
         # or it will trigger outbox to update order to PAID.
         request.session["order_success"] = f"Thanh toán đơn #{order_id} thành công!"
+        paid_order = _get(f"{SVC['order']}/orders/{order_id}/", request)
+        track_order_purchases(request, paid_order)
     elif status == "CANCELLED":
         request.session["order_success"] = f"Bạn đã hủy thanh toán đơn #{order_id}."
     else:
@@ -1228,7 +1226,7 @@ def order_status_api(request):
         if oid in ids:
             status_raw = o.get("status")
             badge = "badge-warning"
-            if status_raw in ('paid', 'COMPLETED', 'WAITING_INVENTORY_CONFIRM'):
+            if status_raw in ('paid', 'PAID', 'COMPLETED', 'WAITING_INVENTORY_CONFIRM', 'PROCESSING', 'SHIPPING'):
                 badge = "badge-info"
             elif status_raw == "delivered":
                 badge = "badge-success"

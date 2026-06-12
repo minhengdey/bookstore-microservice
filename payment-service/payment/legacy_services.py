@@ -1,3 +1,4 @@
+import os
 import uuid
 import logging
 from django.db import transaction
@@ -7,6 +8,7 @@ from common.client import InternalClient
 logger = logging.getLogger(__name__)
 
 SHIP_SERVICE_URL = "http://shipping-service:8000"
+ORDER_SERVICE_URL = os.environ.get("ORDER_SERVICE_URL", "http://order-service:8000")
 
 class PaymentMethodService:
     def list(self): return PaymentMethod.objects.filter(is_active=True)
@@ -27,6 +29,17 @@ class PaymentService:
         if not p: raise ValueError(f"Payment {pk} not found")
         return p
 
+    def _sync_order_paid(self, order_id: int):
+        try:
+            r = self.client.post(
+                f"{ORDER_SERVICE_URL}/orders/internal/{order_id}/mark-paid/",
+                json={},
+            )
+            if r.status_code not in (200, 201):
+                logger.warning(f"Failed to mark order {order_id} as PAID: {r.text}")
+        except Exception as e:
+            logger.warning(f"Failed to sync order {order_id} status after payment: {e}")
+
     def process_payment(self, order_id: int, amount: float, method_id: int = None):
         import time
         start_time = time.time()
@@ -41,9 +54,9 @@ class PaymentService:
             )
             
             if payment.payment_status == "completed":
-                # Idempotency: Return existing completed payment
                 latency_ms = int((time.time() - start_time) * 1000)
                 logger.info("metric_payment_latency", extra={"latency_ms": latency_ms, "order_id": order_id, "idempotent": True})
+                transaction.on_commit(lambda: self._sync_order_paid(order_id))
                 return payment
 
             method = None
@@ -73,7 +86,6 @@ class PaymentService:
             )
             
             if payment.payment_status == "completed":
-                # Write to Outbox instead of calling shipping-service synchronously
                 from .legacy_models import PaymentOutbox
                 outbox_payload = {
                     "payment_id": payment.id,
@@ -86,6 +98,7 @@ class PaymentService:
                     event_type="payment_completed",
                     payload=outbox_payload
                 )
+                transaction.on_commit(lambda oid=order_id: self._sync_order_paid(oid))
             
         latency_ms = int((time.time() - start_time) * 1000)
         logger.info("metric_payment_latency", extra={"latency_ms": latency_ms, "order_id": order_id, "status": payment.payment_status})

@@ -410,6 +410,7 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
       - SERVICE_NAME=payment-service
+      - ORDER_SERVICE_URL=http://order-service:8000
       - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service
       - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
       - PAYMENT_PROVIDER=MOCK
@@ -638,18 +639,23 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - ORDER_SERVICE_URL=http://order-service:8000
       - PRODUCT_SERVICE_URL=http://product-service:8000
+      - INTERACTION_SERVICE_URL=http://interaction-service:8000
       - IMPLICIT_CF_DATA_DIR=/app/data/implicit_cf
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-fast}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PYTHONPATH=/app/common
       # Neo4j Config
       - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
       - NEO4J_USER=${NEO4J_USER:-neo4j}
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password123}
       - SERVICE_NAME=recommender-ai-service
       - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-internal-dev-token}
+      - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
     volumes:
+      - ./common:/app/common
       - ./recommender-ai-service/data:/app/data
       - ./recommender-ai-service/app/services/ai_engine/kb:/app/app/services/ai_engine/kb
     depends_on:
@@ -946,6 +952,7 @@ services:
       - ecommerce-net
     restart: unless-stopped
     volumes:
+      - ./common:/app/common
       - ./recommender-ai-service/app/services/ai_engine/kb:/app/app/services/ai_engine/kb
       - ./recommender-ai-service/data:/app/data
 

@@ -20,6 +20,15 @@ ORDER_STATUS_MAP = {
     "REFUNDED": "Đã hoàn tiền",
     
     # Legacy statuses
+    "PENDING_PAYMENT": "Chờ thanh toán",
+    "PAID":            "Đã thanh toán",
+    "PROCESSING":      "Đang xử lý",
+    "SHIPPING":        "Đang giao",
+    "DELIVERED":       "Đã giao",
+    "CANCELLED":       "Đã hủy",
+    "RETURN_REQUESTED":"Yêu cầu trả hàng",
+    "RETURNED":        "Đã trả hàng",
+    "REFUNDED":        "Đã hoàn tiền",
     "pending_payment": "Chờ thanh toán",
     "paid":            "Đã thanh toán",
     "pending":         "Chờ xử lý",

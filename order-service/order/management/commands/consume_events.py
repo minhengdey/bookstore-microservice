@@ -1,16 +1,48 @@
 import json
 import os
+import time
+import logging
 import pika
 from django.core.management.base import BaseCommand
 from order.services.saga_manager import OrderSagaManager
+
+logger = logging.getLogger(__name__)
+
+
+def _mark_legacy_order_paid(order_id):
+    from order.legacy_models import LegacyOrder, OrderStatus
+
+    legacy_order = LegacyOrder.objects.filter(id=order_id).first()
+    if not legacy_order:
+        return False
+    if legacy_order.status == OrderStatus.PAID:
+        return True
+    if legacy_order.status != OrderStatus.PENDING_PAYMENT:
+        return False
+    legacy_order.status = OrderStatus.PAID
+    legacy_order.save(update_fields=["status"])
+    return True
+
 
 class Command(BaseCommand):
     help = 'Consume events for Order Saga'
 
     def handle(self, *args, **kwargs):
         rabbitmq_url = os.environ.get('RABBITMQ_URL', 'amqp://user:password@rabbitmq:5672/')
-        parameters = pika.URLParameters(rabbitmq_url)
-        connection = pika.BlockingConnection(parameters)
+        max_retries = int(os.environ.get('RABBITMQ_CONN_RETRIES', '10'))
+        delay = float(os.environ.get('RABBITMQ_CONN_DELAY', '3'))
+
+        connection = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                connection = pika.BlockingConnection(pika.URLParameters(rabbitmq_url))
+                break
+            except Exception as e:
+                logger.warning(f"RabbitMQ connection attempt {attempt} failed: {e}")
+                if attempt == max_retries:
+                    raise
+                time.sleep(delay)
+
         channel = connection.channel()
 
         channel.exchange_declare(exchange='dlx', exchange_type='direct', durable=True)
@@ -63,13 +95,8 @@ class Command(BaseCommand):
                     OrderSagaManager.handle_inventory_confirmed(order_id)
                 elif routing_key in ['payment.succeeded', 'payment_completed']:
                     try:
-                        int_order_id = int(order_id)
-                        from order.legacy_models import LegacyOrder
-                        legacy_order = LegacyOrder.objects.filter(id=int_order_id).first()
-                        if legacy_order and legacy_order.status == 'pending_payment':
-                            legacy_order.status = 'paid'
-                            legacy_order.save(update_fields=['status'])
-                            self.stdout.write(self.style.SUCCESS(f"Updated LegacyOrder {int_order_id} status to paid"))
+                        if _mark_legacy_order_paid(int(order_id)):
+                            self.stdout.write(self.style.SUCCESS(f"Updated LegacyOrder {order_id} status to PAID"))
                     except (ValueError, TypeError):
                         pass
 

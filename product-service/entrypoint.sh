@@ -10,8 +10,8 @@ if [ -d /app/common ]; then
 fi
 
 echo "Applying migrations..."
-python manage.py makemigrations
-python manage.py migrate
+python manage.py makemigrations product --noinput
+python manage.py migrate --noinput
 python manage.py seed_mock || true
 
 if [ $# -eq 0 ]; then

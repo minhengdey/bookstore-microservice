@@ -111,6 +111,15 @@ class EventHandler:
 
     @staticmethod
     def _process_interaction(user_id: str, product_id: str, event_type: str, weight: float, occurred_at: str = None):
+        from app.services.behavior_sync import record_behavior_from_interaction
+
+        record_behavior_from_interaction(
+            user_id=user_id,
+            product_id=product_id,
+            event_type=event_type,
+            weight=weight,
+        )
+
         # 1. Store backup in PostgreSQL
         ts = datetime.fromisoformat(occurred_at) if occurred_at else timezone.now()
         UserSequenceEvent.objects.create(

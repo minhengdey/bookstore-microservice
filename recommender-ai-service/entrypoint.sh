@@ -21,14 +21,19 @@ done
 echo "[entrypoint] PostgreSQL is ready!"
 
 echo "[entrypoint] Installing common package..."
+pip install -q "protobuf>=3.20.3,<5.0.0" || true
 if [ -d /app/common ]; then
     pip install -q -e /app/common || true
+    pip install -q "protobuf>=3.20.3,<5.0.0" || true
 fi
 
 if [ "$#" -eq 0 ]; then
     python manage.py makemigrations app --no-input
     python manage.py migrate --no-input
     python manage.py seed_mock || true
+    python manage.py sync_purchase_behaviors || true
+    python manage.py sync_interaction_behaviors || true
+    python manage.py ensure_recommender_models || true
 
     echo "[entrypoint] Starting cron and adding django crontab..."
     service cron start

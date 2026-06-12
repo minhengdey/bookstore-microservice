@@ -16,6 +16,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+import numpy as np
 import requests
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -46,12 +47,20 @@ def _resolve_order_service_url(cli: str) -> str:
     return f"http://127.0.0.1:{port}"
 
 
-def _fetch_order_metrics(base: str) -> list[dict]:
-    url = f"{base.rstrip('/')}/orders/metrics/"
-    r = requests.get(url, timeout=60)
-    r.raise_for_status()
-    data = r.json()
-    return data if isinstance(data, list) else []
+def _fetch_purchase_signals(base: str) -> list[dict]:
+    url = f"{base.rstrip('/')}/orders/internal/recommender-orders/"
+    try:
+        from common.client import InternalClient
+        r = InternalClient(timeout=60).get(url)
+        r.raise_for_status()
+        payload = r.json()
+        if isinstance(payload, dict):
+            signals = payload.get("purchase_signals")
+            if isinstance(signals, list):
+                return signals
+    except Exception:
+        pass
+    return []
 
 
 class Command(BaseCommand):
@@ -120,13 +129,13 @@ class Command(BaseCommand):
         # 2) Orders (metrics)
         if not options["no_orders"]:
             base = _resolve_order_service_url(options.get("order_service_url") or "")
-            self.stdout.write(f"Lấy đơn từ: {base}/orders/metrics/")
+            self.stdout.write(f"Lấy đơn từ: {base}/orders/internal/recommender-orders/")
             try:
-                metrics = _fetch_order_metrics(base)
-            except requests.RequestException as e:
+                metrics = _fetch_purchase_signals(base)
+            except Exception as e:
                 self.stderr.write(
                     self.style.WARNING(
-                        f"Không lấy được orders/metrics ({e}). Chỉ dùng behavior. "
+                        f"Không lấy được recommender-orders ({e}). Chỉ dùng behavior. "
                         f"Hoặc chạy với --no-orders nếu cố ý."
                     )
                 )

@@ -6,7 +6,8 @@ done
 echo "PostgreSQL started"
 
 echo "Running migrations..."
-python manage.py migrate
+python manage.py makemigrations payment --noinput
+python manage.py migrate --noinput
 
 if [ $# -eq 0 ]; then
   echo "Starting server..."
