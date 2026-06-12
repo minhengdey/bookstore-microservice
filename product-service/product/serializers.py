@@ -22,10 +22,16 @@ class ProductSerializer(serializers.ModelSerializer):
     brand = BrandSerializer(read_only=True)
     brand_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     variants = ProductVariantSerializer(many=True, read_only=True)
+    effective_price = serializers.SerializerMethodField()
+    list_price = serializers.DecimalField(source="price", max_digits=12, decimal_places=2, read_only=True)
 
     class Meta:
         model = Product
         fields = "__all__"
+
+    def get_effective_price(self, obj):
+        obj.refresh_flash_sale_state(save=True)
+        return obj.effective_price
 
 class InventoryTransactionSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)

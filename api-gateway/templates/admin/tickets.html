@@ -1,15 +1,14 @@
 {% extends "admin_base.html" %}
+{% load custom_filters %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-    <h1 style="margin: 0; font-size: 1.8rem;">Hỗ trợ Khách hàng (Tickets)</h1>
-</div>
+<h1 class="page-heading">Hỗ trợ khách hàng</h1>
 
 <div class="card">
+    <div class="table-wrap">
     <table>
         <thead>
             <tr>
-                <th>Mã Ticket</th>
                 <th>Tiêu đề</th>
                 <th>Khách hàng</th>
                 <th>Đơn hàng</th>
@@ -21,32 +20,26 @@
         <tbody>
             {% for ticket in tickets %}
             <tr>
-                <td style="font-weight: 600; font-size: 0.85rem;">{{ ticket.id|slice:":8" }}...</td>
-                <td>{{ ticket.subject }}</td>
-                <td>ID: {{ ticket.customer_id }}</td>
-                <td>{% if ticket.order_id %}<a href="/admin/orders/?search={{ ticket.order_id }}">#{{ ticket.order_id }}</a>{% else %}-{% endif %}</td>
+                <td style="font-weight: 600;">{{ ticket.subject }}</td>
                 <td>
-                    {% if ticket.status == 'OPEN' %}
-                    <span style="color: var(--danger); font-weight: 600;">Mới tạo (OPEN)</span>
-                    {% elif ticket.status == 'IN_PROGRESS' %}
-                    <span style="color: var(--primary); font-weight: 600;">Đang xử lý</span>
-                    {% elif ticket.status == 'RESOLVED' %}
-                    <span style="color: var(--secondary); font-weight: 600;">Đã giải quyết</span>
-                    {% else %}
-                    <span style="color: var(--text-muted); font-weight: 600;">Đã đóng</span>
-                    {% endif %}
+                    {{ ticket.customer_name|customer_display }}
                 </td>
-                <td style="color: var(--text-muted); font-size: 0.9rem;">{{ ticket.created_at|slice:":10" }} {{ ticket.created_at|slice:"11:16" }}</td>
+                <td>{% if ticket.order_id %}<a href="/admin/orders/?search={{ ticket.order_id }}">#{{ ticket.order_id }}</a>{% else %}—{% endif %}</td>
+                <td>
+                    <span class="badge {{ ticket.status|ticket_status_badge }}">{{ ticket.status|vi_ticket_status }}</span>
+                </td>
+                <td style="color: var(--text-muted); font-size: 0.9rem;">{{ ticket.created_at|format_date }}</td>
                 <td>
                     <a href="/admin/tickets/{% if ticket.id %}{{ ticket.id }}{% else %}{{ ticket.uuid }}{% endif %}/" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.9rem;">Xem / Trả lời</a>
                 </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có Ticket nào</td>
+                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">Chưa có ticket nào</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </div>
 {% endblock %}

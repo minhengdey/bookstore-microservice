@@ -1,36 +1,33 @@
 {% extends "admin_base.html" %}
+{% load custom_filters %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-    <h1 style="margin: 0; font-size: 1.8rem;">Chi tiết Khách hàng #{{ customer.id }}</h1>
+<div class="page-header">
+    <h1 class="page-heading" style="margin: 0;">{{ customer.full_name|default:"Khách hàng" }} <span style="color: var(--text-muted); font-size: 1rem; font-weight: 500;">#{{ customer.id }}</span></h1>
     <a href="/admin/customers/" class="btn btn-secondary">Quay lại</a>
 </div>
 
-<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px;">
-    <!-- Thông tin cá nhân -->
+<div class="layout-2col-12">
     <div class="card">
         <h3 style="margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Thông tin cá nhân</h3>
-        <p><strong>Họ và tên:</strong> {{ customer.full_name|default:'-' }}</p>
-        <p><strong>SĐT:</strong> {{ customer.phone|default:'-' }}</p>
+        <p><strong>Họ và tên:</strong> {{ customer.full_name|default:'—' }}</p>
+        <p><strong>SĐT:</strong> {{ customer.phone|default:'—' }}</p>
         <p><strong>Điểm tích lũy:</strong> {{ customer.loyalty_points|default:0 }}</p>
-        <p><strong>Vai trò:</strong> {{ customer.roles|join:", " }}</p>
         <p><strong>Trạng thái:</strong>
-            {% if customer.status == 'ACTIVE' %}
-            <span style="color: var(--secondary); font-weight: 600;">Hoạt động</span>
-            {% else %}
-            <span style="color: var(--danger); font-weight: 600;">{{ customer.status }}</span>
-            {% endif %}
+            <span class="badge {% if customer.status == 'ACTIVE' %}badge-success{% else %}badge-danger{% endif %}">
+                {{ customer.status|vi_customer_status }}
+            </span>
         </p>
-        <p><strong>Ngày tham gia:</strong> {{ customer.created_at|slice:":10" }}</p>
+        <p><strong>Ngày tham gia:</strong> {{ customer.created_at|format_date }}</p>
     </div>
 
-    <!-- Lịch sử Đơn hàng -->
     <div class="card">
-        <h3 style="margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Lịch sử Đơn hàng</h3>
+        <h3 style="margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Lịch sử đơn hàng</h3>
+        <div class="table-wrap">
         <table>
             <thead>
                 <tr>
-                    <th>Mã Đơn</th>
+                    <th>Mã đơn</th>
                     <th>Ngày tạo</th>
                     <th>Tổng tiền</th>
                     <th>Trạng thái</th>
@@ -40,11 +37,11 @@
                 {% for order in orders %}
                 <tr>
                     <td style="font-weight: 600;"><a href="/admin/orders/?search={{ order.id }}">#{{ order.id }}</a></td>
-                    <td style="color: var(--text-muted); font-size: 0.9rem;">{{ order.order_date|slice:":10" }} {{ order.order_date|slice:"11:16" }}</td>
-                    <td style="font-weight: bold; color: var(--danger);">{{ order.total_amount|floatformat:0 }} đ</td>
+                    <td style="color: var(--text-muted); font-size: 0.9rem;">{{ order.order_date|format_date }}</td>
+                    <td style="font-weight: 700; color: var(--primary);">{{ order.total_amount|vnd }}</td>
                     <td>
-                        <span style="background: var(--bg-color); padding: 4px 8px; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
-                            {{ order.status }}
+                        <span class="badge {{ order.status|order_status_badge }}">
+                            {{ order.status|vi_status }}
                         </span>
                     </td>
                 </tr>
@@ -55,6 +52,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 {% endblock %}

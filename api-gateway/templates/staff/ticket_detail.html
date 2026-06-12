@@ -1,61 +1,32 @@
 {% extends "staff_base.html" %}
+{% load custom_filters %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+<div class="page-header">
     <h1 style="margin: 0; font-size: 1.8rem;">Chi tiết Ticket</h1>
     <a href="/staff/tickets/" class="btn btn-secondary">Quay lại</a>
 </div>
 
-<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+<div class="layout-2col-21">
     <div>
-        <div class="card" style="margin-bottom: 24px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
-                <h3 style="margin: 0; color: var(--primary);">{{ ticket.subject }}</h3>
-                <span style="color: var(--text-muted); font-size: 0.9rem;">{{ ticket.created_at|slice:":10" }} {{ ticket.created_at|slice:"11:16" }}</span>
-            </div>
-            <p style="white-space: pre-wrap; line-height: 1.6;">{{ ticket.content }}</p>
-        </div>
-
-        <h3 style="margin-top: 0;">Lịch sử Trao đổi</h3>
-        <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;">
-            {% for reply in ticket.replies %}
-            <div style="background: {% if reply.is_staff %}#E0F2FE{% else %}var(--bg-color){% endif %}; padding: 16px; border-radius: 8px; border-left: 4px solid {% if reply.is_staff %}var(--primary){% else %}var(--border){% endif %};">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem;">
-                    <strong>{% if reply.is_staff %}Nhân viên{% else %}Khách hàng{% endif %}</strong>
-                    <span style="color: var(--text-muted);">{{ reply.created_at|slice:":10" }} {{ reply.created_at|slice:"11:16" }}</span>
-                </div>
-                <div style="white-space: pre-wrap;">{{ reply.message }}</div>
-            </div>
-            {% empty %}
-            <p style="color: var(--text-muted); text-align: center;">Chưa có phản hồi.</p>
-            {% endfor %}
-        </div>
-
-        <div class="card">
-            <h3 style="margin-top: 0;">Gửi Phản hồi</h3>
-            <form method="POST">
-                {% csrf_token %}
-                <div class="form-group">
-                    <textarea name="message" class="form-control" rows="4" placeholder="Nhập phản hồi cho khách hàng..." required></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary">Gửi Phản hồi</button>
-            </form>
-        </div>
+        {% include "partials/ticket_chat.html" with chat_api_url=chat_api_url viewer_role="staff" customer_label=customer_name|customer_display %}
     </div>
 
     <div>
         <div class="card">
             <h3 style="margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 12px;">Thông tin</h3>
-            <p><strong>Khách hàng:</strong> <a href="/staff/customers/{{ ticket.customer_id }}/">{{ ticket.customer_id }}</a></p>
+            <p><strong>Trạng thái:</strong> <span class="badge {{ ticket.status|ticket_status_badge }}" data-ticket-status-badge><span data-ticket-status-label>{{ ticket.status|vi_ticket_status }}</span></span></p>
+            <p><strong>Khách hàng:</strong> <a href="/staff/customers/{{ ticket.customer_id }}/">{{ customer_name|customer_display }}</a></p>
             {% if ticket.order_id %}
             <p><strong>Đơn hàng:</strong> #{{ ticket.order_id }}</p>
             {% endif %}
+            <p style="color: var(--text-muted); font-size: 0.88rem; margin-top: 16px;">Tin nhắn được đồng bộ realtime mỗi 2 giây.</p>
             <form method="POST" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border);">
                 {% csrf_token %}
                 <div class="form-group">
                     <label><strong>Trạng thái:</strong></label>
                     <select name="status" class="form-control">
-                        <option value="OPEN" {% if ticket.status == 'OPEN' %}selected{% endif %}>Mới (OPEN)</option>
+                        <option value="OPEN" {% if ticket.status == 'OPEN' %}selected{% endif %}>Chờ xử lý</option>
                         <option value="IN_PROGRESS" {% if ticket.status == 'IN_PROGRESS' %}selected{% endif %}>Đang xử lý</option>
                         <option value="RESOLVED" {% if ticket.status == 'RESOLVED' %}selected{% endif %}>Đã giải quyết</option>
                         <option value="CLOSED" {% if ticket.status == 'CLOSED' %}selected{% endif %}>Đã đóng</option>

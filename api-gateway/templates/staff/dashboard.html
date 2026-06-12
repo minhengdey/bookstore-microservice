@@ -1,7 +1,8 @@
 {% extends "staff_base.html" %}
+{% load custom_filters %}
 
 {% block content %}
-<h1 style="margin: 0 0 24px; font-size: 1.8rem;">Dashboard Vận hành</h1>
+<h1 class="page-heading">Dashboard Vận hành</h1>
 
 <div class="stat-grid">
     <div class="stat-card">
@@ -22,7 +23,7 @@
     </div>
 </div>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+<div class="layout-2col">
     <div class="card">
         <h3 style="margin-top: 0;">Phân bổ trạng thái đơn hàng</h3>
         {% if status_breakdown %}
@@ -31,7 +32,7 @@
             <tbody>
                 {% for status, count in status_breakdown.items %}
                 <tr>
-                    <td>{{ status }}</td>
+                    <td>{{ status|vi_status }}</td>
                     <td style="font-weight: 600;">{{ count }}</td>
                 </tr>
                 {% endfor %}

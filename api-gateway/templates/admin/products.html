@@ -1,4 +1,5 @@
 {% extends "admin_base.html" %}
+{% load custom_filters %}
 
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
@@ -7,6 +8,7 @@
 </div>
 
 <div class="card">
+    <div class="table-wrap">
     <table>
         <thead>
             <tr>
@@ -33,10 +35,10 @@
                 </td>
                 <td style="font-weight: 600;">{{ product.name }}<br><small style="color: var(--text-muted);">SKU: {{ product.sku|default:'N/A' }}</small></td>
                 <td>{{ product.category.name }}<br><small style="color: var(--text-muted);">{{ product.brand.name|default:'Không có' }}</small></td>
-                <td style="color: var(--danger); font-weight: 600;">{{ product.price|floatformat:0 }} đ</td>
+                <td style="color: var(--primary); font-weight: 700;">{{ product.price|vnd }}</td>
                 <td>{{ product.stock }}</td>
                 <td>
-                    <span style="background: var(--bg-color); padding: 4px 8px; border-radius: 12px; font-size: 0.8rem;">{{ product.variants|length }} variant(s)</span>
+                    <span class="badge badge-secondary">{{ product.variants|length }} biến thể</span>
                 </td>
                 <td>
                     <a href="/admin/products/{{ product.id }}/edit/" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.9rem;">Sửa</a>
@@ -49,5 +51,6 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </div>
 {% endblock %}

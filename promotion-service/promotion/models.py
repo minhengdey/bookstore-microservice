@@ -2,6 +2,11 @@ from django.db import models
 
 class Voucher(models.Model):
     code = models.CharField(max_length=50, unique=True)
+
+    def save(self, *args, **kwargs):
+        if self.code:
+            self.code = self.code.strip().upper()
+        super().save(*args, **kwargs)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     min_order_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)

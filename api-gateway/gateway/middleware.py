@@ -33,11 +33,10 @@ PUBLIC_PATHS = {
     "/auth/refresh/",
 }
 
-# Path prefixes that are public (e.g. static files, products listing)
+# Path prefixes that are public (static assets, guest JSON APIs)
 PUBLIC_PREFIXES = (
     "/static/",
-    "/products",
-    "/catalog",
+    "/api/guest/",
 )
 
 
@@ -86,6 +85,6 @@ class JWTAuthMiddleware:
         # ── 3. Guard protected routes (HTML only) ─────────────────────────────
         accepts_html = "text/html" in request.META.get("HTTP_ACCEPT", "")
         if not payload and not _is_public(request.path) and accepts_html:
-            return redirect("login")
+            return redirect("home")
 
         return self.get_response(request)

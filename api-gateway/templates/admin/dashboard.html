@@ -1,57 +1,175 @@
 {% extends "admin_base.html" %}
+{% load custom_filters %}
+
+{% block body_attrs %}data-admin-charts="dashboard"{% endblock %}
 
 {% block content %}
-<h1 style="margin: 0 0 24px; font-size: 1.8rem;">Dashboard Quản trị</h1>
+<h1 class="page-heading">Dashboard Quản trị</h1>
+<p class="dashboard-subtitle">Tổng quan kinh doanh, vận hành và hỗ trợ khách hàng theo thời gian thực</p>
 
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px;">
-    <div class="card" style="text-align: center;">
-        <div style="font-size: 2.2rem; font-weight: 700; color: var(--primary);">{{ total_revenue }}</div>
-        <div style="color: var(--text-muted); margin-top: 4px;">Doanh thu (đã giao)</div>
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-value">{{ total_revenue }}</div>
+        <div class="kpi-label">Doanh thu (đã giao)</div>
+        <div class="kpi-meta">{{ delivered_orders }} đơn hoàn tất</div>
     </div>
-    <div class="card" style="text-align: center;">
-        <div style="font-size: 2.2rem; font-weight: 700; color: var(--primary);">{{ total_orders }}</div>
-        <div style="color: var(--text-muted); margin-top: 4px;">Tổng đơn hàng</div>
+    <div class="kpi-card accent-purple">
+        <div class="kpi-value">{{ total_orders }}</div>
+        <div class="kpi-label">Tổng đơn hàng</div>
+        <div class="kpi-meta">TB {{ avg_order_value }}/đơn</div>
     </div>
-    <div class="card" style="text-align: center;">
-        <div style="font-size: 2.2rem; font-weight: 700; color: var(--secondary);">{{ total_products }}</div>
-        <div style="color: var(--text-muted); margin-top: 4px;">Sản phẩm</div>
+    <div class="kpi-card accent-green">
+        <div class="kpi-value">{{ delivery_rate }}%</div>
+        <div class="kpi-label">Tỷ lệ giao thành công</div>
+        <div class="kpi-meta">{{ cancelled_orders }} đơn hủy ({{ cancel_rate }}%)</div>
     </div>
-    <div class="card" style="text-align: center;">
-        <div style="font-size: 2.2rem; font-weight: 700; color: var(--secondary);">{{ total_customers }}</div>
-        <div style="color: var(--text-muted); margin-top: 4px;">Khách hàng</div>
+    <div class="kpi-card">
+        <div class="kpi-value">{{ total_customers }}</div>
+        <div class="kpi-label">Khách hàng</div>
+        <div class="kpi-meta">+{{ new_customers_30d }} trong 30 ngày</div>
+    </div>
+    <div class="kpi-card accent-purple">
+        <div class="kpi-value">{{ total_products }}</div>
+        <div class="kpi-label">Sản phẩm</div>
+        <div class="kpi-meta">{{ low_stock_count }} cần chú ý tồn kho</div>
+    </div>
+    <div class="kpi-card accent-amber">
+        <div class="kpi-value">{{ pending_revenue_orders }}</div>
+        <div class="kpi-label">Đơn đang xử lý</div>
+        <div class="kpi-meta">Chờ giao &amp; vận chuyển</div>
+    </div>
+    <div class="kpi-card accent-red">
+        <div class="kpi-value">{{ open_tickets }}</div>
+        <div class="kpi-label">Ticket đang mở</div>
+        <div class="kpi-meta">Tổng {{ total_tickets }} ticket</div>
+    </div>
+    <div class="kpi-card accent-green">
+        <div class="kpi-value">{{ promotion_count }}</div>
+        <div class="kpi-label">Khuyến mãi đang chạy</div>
+        <div class="kpi-meta">Voucher &amp; flash sale</div>
     </div>
 </div>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+<p class="section-title">Xu hướng 7 ngày qua</p>
+<div class="chart-grid">
+    <div class="chart-card">
+        <h3>Doanh thu theo ngày</h3>
+        <div class="chart-wrap"><canvas id="chartRevenue7"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Số đơn hàng theo ngày</h3>
+        <div class="chart-wrap"><canvas id="chartOrders7"></canvas></div>
+    </div>
+</div>
+
+<p class="section-title">Phân tích đơn hàng &amp; danh mục</p>
+<div class="chart-grid">
+    <div class="chart-card">
+        <h3>Phân bổ trạng thái đơn hàng</h3>
+        <div class="chart-wrap"><canvas id="chartStatus"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Doanh thu theo danh mục</h3>
+        <div class="chart-wrap"><canvas id="chartCategory"></canvas></div>
+    </div>
+</div>
+
+<p class="section-title">Sản phẩm &amp; tồn kho</p>
+<div class="chart-grid">
+    <div class="chart-card">
+        <h3>Top sản phẩm bán chạy</h3>
+        <div class="chart-wrap tall"><canvas id="chartTopProducts"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Tình trạng tồn kho</h3>
+        <div class="chart-wrap"><canvas id="chartStock"></canvas></div>
+        <p style="margin: 16px 0 0; font-size: 0.82rem; color: var(--text-muted);">
+            Sắp hết: tồn kho ≤ 10 · Hết hàng: tồn kho = 0
+        </p>
+    </div>
+</div>
+
+<p class="section-title">Hỗ trợ &amp; khách hàng</p>
+<div class="chart-grid">
+    <div class="chart-card">
+        <h3>Ticket hỗ trợ theo trạng thái</h3>
+        <div class="chart-wrap"><canvas id="chartTickets"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Khách hàng mới theo tháng</h3>
+        <div class="chart-wrap"><canvas id="chartCustomers"></canvas></div>
+    </div>
+</div>
+
+<div class="layout-2col" style="margin-bottom: 24px;">
     <div class="card">
-        <h3 style="margin-top: 0;">Phân bổ trạng thái đơn hàng</h3>
-        {% if status_breakdown %}
-        <table>
-            <thead><tr><th>Trạng thái</th><th>Số lượng</th><th>Tỷ lệ</th></tr></thead>
-            <tbody>
-                {% for status, count in status_breakdown.items %}
-                <tr>
-                    <td>{{ status }}</td>
-                    <td style="font-weight: 600;">{{ count }}</td>
-                    <td>{% widthratio count total_orders 100 %}%</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <h3 style="margin-top: 0;">Đơn hàng gần đây</h3>
+        {% if recent_orders %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mã đơn</th>
+                        <th>Ngày</th>
+                        <th>Trạng thái</th>
+                        <th>Tổng tiền</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in recent_orders %}
+                    <tr>
+                        <td><a href="/admin/orders/">#{{ order.id }}</a></td>
+                        <td>{{ order.order_date|format_date }}</td>
+                        <td><span class="badge {{ order.status|order_status_badge }}">{{ order.status|vi_status }}</span></td>
+                        <td style="font-weight: 600;">{{ order.total_amount|vnd }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
         {% else %}
-        <p style="color: var(--text-muted);">Chưa có dữ liệu.</p>
+        <p style="color: var(--text-muted);">Chưa có đơn hàng.</p>
         {% endif %}
     </div>
     <div class="card">
-        <h3 style="margin-top: 0;">Tóm tắt vận hành</h3>
-        <p><strong>Đơn đã giao:</strong> {{ delivered_orders }}</p>
-        <p><strong>Đơn đã hủy:</strong> {{ cancelled_orders }}</p>
-        <p><strong>Đơn chờ xử lý:</strong> {{ pending_revenue_orders }}</p>
+        <h3 style="margin-top: 0;">Sản phẩm sắp hết / hết hàng</h3>
+        {% if low_stock_products %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Sản phẩm</th><th>Tồn kho</th><th>Giá</th></tr>
+                </thead>
+                <tbody>
+                    {% for p in low_stock_products %}
+                    <tr>
+                        <td>{{ p.name }}</td>
+                        <td>
+                            <span class="badge {% if p.stock == 0 %}badge-danger{% else %}badge-warning{% endif %}">
+                                {{ p.stock }}
+                            </span>
+                        </td>
+                        <td>{{ p.price|vnd }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="color: var(--text-muted);">Tồn kho ổn định.</p>
+        {% endif %}
         <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 8px;">
-            <a href="/admin/reports/" class="btn btn-primary">Xem báo cáo chi tiết</a>
-            <a href="/admin/recommendation/" class="btn btn-secondary">Quản lý AI</a>
-            <a href="/admin/products/" class="btn btn-secondary">Quản lý sản phẩm</a>
+            <a href="/admin/reports/" class="btn btn-primary">Báo cáo chi tiết</a>
+            <a href="/admin/orders/" class="btn btn-secondary">Quản lý đơn hàng</a>
+            <a href="/admin/inventory/" class="btn btn-secondary">Quản lý tồn kho</a>
+            <a href="/admin/tickets/" class="btn btn-secondary">Xử lý ticket</a>
         </div>
     </div>
 </div>
+
+{{ chart_data_json|json_script:"admin-chart-data" }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/admin-charts.js?v=20260612"></script>
 {% endblock %}

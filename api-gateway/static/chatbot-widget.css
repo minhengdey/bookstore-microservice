@@ -57,9 +57,9 @@
     position: absolute;
     bottom: 85px;
     right: 0;
-    width: 360px;
-    height: 550px;
-    max-height: 80vh;
+    width: 480px;
+    height: 720px;
+    max-height: 88vh;
     border-radius: 32px;
     background: rgba(255, 255, 255, 0.85);
     backdrop-filter: blur(20px);
@@ -94,7 +94,7 @@
 
 .ecommerce-ai-header-title {
     font-weight: 800;
-    font-size: 17px;
+    font-size: 18px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -145,10 +145,10 @@
 
 /* Tin nhắn */
 .ecommerce-ai-msg {
-    max-width: 80%;
-    padding: 14px 18px;
+    max-width: 85%;
+    padding: 16px 20px;
     border-radius: 20px;
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.6;
     animation: ecommerce-ai-bounce-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.2) forwards;
     font-weight: 500;
@@ -166,6 +166,17 @@
     border: 1px solid #ffe5ec;
     border-bottom-left-radius: 6px;
     box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+}
+
+.ecommerce-ai-msg-ai a.ecommerce-ai-product-link {
+    color: #e84a7a;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.ecommerce-ai-msg-ai a.ecommerce-ai-product-link:hover {
+    color: #fb6f92;
 }
 
 .ecommerce-ai-msg-user {
@@ -223,9 +234,9 @@
     background: #fff9fb;
     border: 2px solid #ffe5ec;
     color: #5c3d46;
-    padding: 12px 18px;
+    padding: 14px 20px;
     border-radius: 50px;
-    font-size: 14px;
+    font-size: 15px;
     outline: none;
     transition: all 0.3s ease;
     font-family: inherit;
@@ -265,9 +276,10 @@
 }
 
 /* Đảm bảo khung ngoài mượt mà responsive */
-@media (max-width: 450px) {
+@media (max-width: 540px) {
     .ecommerce-ai-window {
-        width: calc(100vw - 48px);
-        height: calc(100vh - 120px);
+        width: calc(100vw - 32px);
+        height: calc(100vh - 100px);
+        max-height: 92vh;
     }
 }

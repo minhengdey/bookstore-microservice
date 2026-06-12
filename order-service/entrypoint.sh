@@ -5,10 +5,18 @@ while ! python -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_
 done
 echo "PostgreSQL started"
 
-echo "Running migrations..."
-python manage.py makemigrations order --noinput
-python manage.py migrate --noinput
-python manage.py seed_mock || true
+if [ -z "$SKIP_MIGRATE" ]; then
+  echo "Running migrations..."
+  python manage.py migrate --noinput
+else
+  . /app/common/docker/wait-for-tables.sh
+fi
+
+if [ -f /app/common/docker/mock-seed-common.sh ]; then
+    . /app/common/docker/mock-seed-common.sh
+    wait_for_product_catalog "${MOCK_PRODUCT_MIN:-50}" || true
+    run_dependent_seed
+fi
 
 if [ $# -eq 0 ]; then
   echo "Starting server..."

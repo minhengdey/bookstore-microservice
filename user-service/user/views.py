@@ -203,6 +203,16 @@ class AddressListView(APIView):
             return Response({"error": "Customer profile not found"}, status=404)
         
         data = request.data
+        required = {
+            "recipient_name": "Tên người nhận",
+            "phone": "Số điện thoại",
+            "address_line": "Địa chỉ",
+            "city": "Thành phố",
+        }
+        for field, label in required.items():
+            if not str(data.get(field) or "").strip():
+                return Response({"error": f"{label} là bắt buộc."}, status=400)
+
         is_default = str(data.get("is_default")).lower() in ('true', '1')
         
         if not WebAddress.objects.filter(customer=profile).exists():

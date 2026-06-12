@@ -210,6 +210,25 @@ class InternalOrderMarkPaidView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class InternalOrderShippingContextView(APIView):
+    @require_internal
+    def get(self, request, pk):
+        try:
+            return Response(_order_svc.get_shipping_context(pk))
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+
+class InternalOrderAdvanceProcessingView(APIView):
+    @require_internal
+    def post(self, request, pk):
+        try:
+            order = _order_svc.advance_to_processing(pk)
+            return Response(OrderSerializer(order).data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class OrderReturnRequestView(APIView):
     @require_customer
     def post(self, request, pk):

@@ -2,6 +2,7 @@ from django.urls import path
 from .legacy_views import (
     OrderListCreateView, OrderDetailView, OrderMetricsView,
     InternalBulkOrderStatusView, InternalOrderMarkPaidView,
+    InternalOrderShippingContextView, InternalOrderAdvanceProcessingView,
     InternalRecommenderOrdersView,
     StaffBulkOrderUpdateView, OrderReturnRequestView,
 )
@@ -12,6 +13,8 @@ urlpatterns = [
     path('bulk-update/', StaffBulkOrderUpdateView.as_view(), name='legacy-staff-bulk-update'),
     path('internal/bulk-status/', InternalBulkOrderStatusView.as_view(), name='legacy-internal-bulk-status'),
     path('internal/<int:pk>/mark-paid/', InternalOrderMarkPaidView.as_view(), name='legacy-internal-mark-paid'),
+    path('internal/<int:pk>/shipping-context/', InternalOrderShippingContextView.as_view(), name='legacy-internal-shipping-context'),
+    path('internal/<int:pk>/advance-processing/', InternalOrderAdvanceProcessingView.as_view(), name='legacy-internal-advance-processing'),
     path('<int:pk>/return/', OrderReturnRequestView.as_view(), name='legacy-order-return'),
     path('<int:pk>/', OrderDetailView.as_view(), name='legacy-order-detail'),
     path('', OrderListCreateView.as_view(), name='legacy-order-list-create'),

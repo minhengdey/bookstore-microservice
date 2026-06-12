@@ -23,9 +23,13 @@ echo "[entrypoint] Installing common package..."
 if [ -d /app/common ]; then
     pip install -q -e /app/common || true
 fi
+if [ -f /app/common/docker/mock-seed-common.sh ]; then
+    . /app/common/docker/mock-seed-common.sh
+fi
 python manage.py makemigrations --no-input
 python manage.py migrate --no-input
-python manage.py seed_mock || true
+wait_for_product_catalog "${MOCK_PRODUCT_MIN:-50}" || true
+run_dependent_seed
 if [ "$#" -gt 0 ]; then
     exec "$@"
 fi

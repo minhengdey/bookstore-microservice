@@ -32,9 +32,29 @@
 
     <div class="product-info">
         <h1 class="product-title">{{ product.name }}</h1>
-        <div class="product-price-large">
-            {{ product.price|vnd }}
+        {% if product.is_flash_sale_active %}
+        <div style="margin-bottom: 8px;">
+            <span class="badge" style="background:#ea580c;color:white;">⚡ {{ product.flash_sale_name|default:"Flash Sale" }}</span>
         </div>
+        {% endif %}
+        <div class="product-price-large">
+            {% if product.is_flash_sale_active %}
+            <span style="color:#ea580c;">{{ product.display_price_fmt }}</span>
+            <span style="text-decoration:line-through;color:var(--text-secondary);font-size:1rem;margin-left:12px;font-weight:500;">{{ product.list_price_fmt }}</span>
+            <span style="display:block;font-size:0.9rem;color:#ea580c;margin-top:6px;">Tiết kiệm {{ product.discount_pct }}%</span>
+            {% else %}
+            {{ product.display_price_fmt }}
+            {% endif %}
+        </div>
+
+        {% if review_summary.count %}
+        <div style="display:flex; align-items:center; gap:10px; margin: 12px 0 20px;">
+            {{ review_summary.average|star_rating }}
+            <span style="color:var(--text-secondary); font-size:0.95rem;">
+                {{ review_summary.average }}/5 · {{ review_summary.count }} đánh giá
+            </span>
+        </div>
+        {% endif %}
 
         <div class="card" style="padding: 20px;">
             <h3>Chi tiết sản phẩm</h3>
@@ -60,7 +80,7 @@
                 <div class="product-specs">
                     {% for key, value in product.attributes.items %}
                     <div class="spec-item">
-                        <strong>{{ key|title }}:</strong> {{ value }}
+                        <strong>{{ key|attr_label }}:</strong> {{ value|attr_value }}
                     </div>
                     {% endfor %}
                 </div>
@@ -68,7 +88,18 @@
             {% endif %}
         </div>
 
-        {% if is_customer %}
+        {% if is_guest %}
+        <div class="card guest-login-prompt" style="border-left: 4px solid var(--primary); border-radius: var(--radius);">
+            <h3 style="margin-bottom: 8px;">Đăng nhập để mua hàng</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                Bạn đang xem ở chế độ khách. Vui lòng đăng nhập hoặc đăng ký để thêm sản phẩm vào giỏ hàng và đặt mua.
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <a href="/login/" class="btn btn-primary">Đăng nhập</a>
+                <a href="/register/" class="btn btn-secondary">Đăng ký tài khoản</a>
+            </div>
+        </div>
+        {% elif is_customer %}
         <div class="card" style="border-left: 4px solid var(--primary); border-radius: var(--radius);">
             {% if error %}
             <div class="alert-error" style="margin-bottom: 16px;">{{ error }}</div>
@@ -103,40 +134,88 @@
     </div>
 </div>
 
-<div class="card" style="margin-top: 24px;">
+<div class="card" id="reviews" style="margin-top: 24px;">
     <h2>Đánh giá từ khách hàng</h2>
-    
-    {% if is_customer %}
-    <div style="margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border);">
-        <h4 style="margin-bottom: 12px;">Viết đánh giá của bạn</h4>
-        <form method="POST" action="/products/{{ product.id }}/review/">
+
+    {% if review_summary.count %}
+    <div class="review-summary">
+        <div class="review-summary__score">{{ review_summary.average }}</div>
+        <div>
+            <div>{{ review_summary.average|star_rating }}</div>
+            <div class="review-summary__meta">Dựa trên {{ review_summary.count }} đánh giá</div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if review_success %}
+    <div class="alert alert-success" style="margin-bottom: 16px;">✓ {{ review_success }}</div>
+    {% endif %}
+    {% if review_error %}
+    <div class="alert-error" style="margin-bottom: 16px;">{{ review_error }}</div>
+    {% endif %}
+
+    {% if is_customer and can_review %}
+    <div class="review-form-card">
+        <h4 style="margin: 0 0 8px;">Viết đánh giá của bạn</h4>
+        <p style="margin: 0 0 16px; color: var(--text-secondary); font-size: 0.95rem;">
+            Bạn đã nhận sản phẩm này — hãy chia sẻ trải nghiệm để giúp người mua khác.
+        </p>
+        <form method="POST" action="/products/{{ product.id }}/#reviews">
             {% csrf_token %}
-            <div style="margin-bottom: 12px;">
-                <label>Số sao (1-5):</label>
-                <input type="number" name="rating" min="1" max="5" value="5" required style="width: 80px;">
+            <input type="hidden" name="_action" value="review">
+            <div style="margin-bottom: 16px;">
+                <label style="font-weight: 600; display: block; margin-bottom: 8px;">Chọn số sao:</label>
+                <div class="star-rating-input" role="radiogroup" aria-label="Chọn số sao">
+                    <input type="radio" name="rating" id="rating-5" value="5" checked required>
+                    <label for="rating-5" title="5 sao">★</label>
+                    <input type="radio" name="rating" id="rating-4" value="4">
+                    <label for="rating-4" title="4 sao">★</label>
+                    <input type="radio" name="rating" id="rating-3" value="3">
+                    <label for="rating-3" title="3 sao">★</label>
+                    <input type="radio" name="rating" id="rating-2" value="2">
+                    <label for="rating-2" title="2 sao">★</label>
+                    <input type="radio" name="rating" id="rating-1" value="1">
+                    <label for="rating-1" title="1 sao">★</label>
+                </div>
             </div>
-            <div style="margin-bottom: 12px;">
+            <div style="margin-bottom: 16px;">
+                <label style="font-weight: 600; display: block; margin-bottom: 8px;">Nhận xét:</label>
                 <textarea name="comment_text" rows="3" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);" placeholder="Chia sẻ cảm nhận của bạn về sản phẩm này..."></textarea>
             </div>
             <button type="submit" class="btn btn-primary">Gửi đánh giá</button>
         </form>
     </div>
+    {% elif is_customer and already_reviewed %}
+    <p style="color: var(--text-secondary); margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border);">
+        ✓ Bạn đã đánh giá sản phẩm này. Cảm ơn phản hồi của bạn!
+    </p>
+    {% elif is_customer and awaiting_delivery %}
+    <p style="color: var(--text-secondary); margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border);">
+        Đơn hàng của bạn đang được xử lý. Bạn có thể đánh giá sau khi nhận hàng thành công.
+    </p>
+    {% elif is_customer %}
+    <p style="color: var(--text-secondary); margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border);">
+        Mua và nhận sản phẩm này để có thể viết đánh giá.
+    </p>
     {% endif %}
 
     {% if reviews %}
     <div style="display: flex; flex-direction: column; gap: 16px;">
         {% for review in reviews %}
         <div style="padding: 16px; background: var(--bg-color); border-radius: 8px; border: 1px solid var(--border);">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <div class="review-item__header">
                 <div>
-                    <span style="font-weight: bold;">Khách hàng #{{ review.customer_id }}</span>
+                    <span style="font-weight: bold;">Khách hàng</span>
                     {% if review.verified_purchase %}
                     <span style="color: #16a34a; font-size: 0.85rem; margin-left: 8px; font-weight: bold;">✓ Đã mua hàng</span>
                     {% endif %}
                 </div>
-                <div style="color: #f59e0b; font-weight: bold;">{{ review.rating }} ⭐</div>
+                <div>{{ review.rating|star_rating }}</div>
             </div>
             <p style="margin: 0; color: var(--text-secondary);">{{ review.comment_text|default:"Không có bình luận" }}</p>
+            {% if review.created_at %}
+            <p style="margin: 8px 0 0; font-size: 0.85rem; color: var(--text-muted);">{{ review.created_at|format_date }}</p>
+            {% endif %}
             {% if review.image_urls %}
             <div style="display: flex; gap: 8px; margin-top: 12px;">
                 {% for img in review.image_urls %}
@@ -177,7 +256,7 @@
                     <div style="font-size: 0.9rem; font-weight: 600; color: var(--primary); margin-bottom: 8px;">Sản
                         phẩm liên quan</div>
                     <div class="recommendation-name">{{ item.name }}</div>
-                    <div class="recommendation-price">{{ item.price|vnd }}</div>
+                    <div class="recommendation-price">{{ item.display_price_fmt }}</div>
                 </div>
             </div>
         </a>

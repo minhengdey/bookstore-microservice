@@ -9,7 +9,6 @@ services:
       - POSTGRES_DB=${DB_NAME_CATALOG:-catalog_db}
     volumes:
       - catalog_db_data:/var/lib/postgresql/data
-      - ./scripts/sql/02_catalog_db_seed.sql:/docker-entrypoint-initdb.d/02_catalog_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -46,7 +45,6 @@ services:
       - POSTGRES_DB=${DB_NAME_ORDER:-order_db}
     volumes:
       - order_db_data:/var/lib/postgresql/data
-      - ./scripts/sql/06_order_db_seed.sql:/docker-entrypoint-initdb.d/06_order_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -150,7 +148,6 @@ services:
       - POSTGRES_DB=${DB_NAME_PRODUCT:-product_db}
     volumes:
       - product_db_data:/var/lib/postgresql/data
-      - ./scripts/sql/12_product_db_seed.sql:/docker-entrypoint-initdb.d/12_product_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -169,7 +166,6 @@ services:
       - POSTGRES_DB=${DB_NAME_CART:-cart_db}
     volumes:
       - cart_db_data:/var/lib/postgresql/data
-      - ./scripts/sql/05_cart_db_seed.sql:/docker-entrypoint-initdb.d/05_cart_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -189,7 +185,6 @@ services:
       - POSTGRES_DB=${DB_NAME_SHIP:-ship_db}
     volumes:
       - shipping_db_data:/var/lib/postgresql/data
-      - ./scripts/sql/08_ship_db_seed.sql:/docker-entrypoint-initdb.d/08_ship_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -208,7 +203,6 @@ services:
       - POSTGRES_DB=${DB_NAME_USER:-user_db}
     volumes:
       - user_db_data:/var/lib/postgresql/data
-      - ./scripts/sql/13_user_db_seed.sql:/docker-entrypoint-initdb.d/13_user_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -227,7 +221,6 @@ services:
       - POSTGRES_DB=${DB_NAME_RECOMMENDER:-recommender_db}
     volumes:
       - recommender_db_data:/var/lib/postgresql/data
-      - ./scripts/sql/11_recommender_db_seed.sql:/docker-entrypoint-initdb.d/11_recommender_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -246,7 +239,6 @@ services:
       - POSTGRES_DB=${DB_NAME_AUTH:-auth_db}
     volumes:
       - auth_db_data:/var/lib/postgresql/data
-      - ./scripts/sql/01_auth_db_seed.sql:/docker-entrypoint-initdb.d/01_auth_db_seed.sql
     networks:
       - ecommerce-net
     healthcheck:
@@ -278,10 +270,18 @@ services:
       - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
       - INTERNAL_ALLOWED_SERVICES=${INTERNAL_ALLOWED_SERVICES:-auth-service}
       - INTERNAL_SIGNATURE_TOLERANCE=${INTERNAL_SIGNATURE_TOLERANCE:-30}
+      - DEFAULT_ADMIN_USERNAME=${DEFAULT_ADMIN_USERNAME:-admin}
+      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@ecommerce.local}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-Admin@12345}
+      - DEFAULT_CUSTOMER_PASSWORD=${DEFAULT_CUSTOMER_PASSWORD:-password123}
+      - DEFAULT_STAFF_PASSWORD=${DEFAULT_STAFF_PASSWORD:-password123}
+      - MOCK_CUSTOMER_COUNT=${MOCK_CUSTOMER_COUNT:-50}
     depends_on:
       auth-db:
         condition: service_healthy
       redis:
+        condition: service_started
+      user-service:
         condition: service_started
     networks:
       - ecommerce-net
@@ -386,11 +386,19 @@ services:
       - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
       - CATALOG_SERVICE_URL=http://catalog-service:8000
       - PAYMENT_SERVICE_URL=http://payment-service:8000
+      - PRODUCT_SERVICE_URL=http://product-service:8000
+      - MOCK_PRODUCT_COUNT=${MOCK_PRODUCT_COUNT:-320}
+      - MOCK_CUSTOMER_COUNT=${MOCK_CUSTOMER_COUNT:-50}
+      - MOCK_ORDER_COUNT=${MOCK_ORDER_COUNT:-250}
+      - MOCK_PRODUCT_MIN=${MOCK_PRODUCT_MIN:-50}
+      - MOCK_RESEED=${MOCK_RESEED:-false}
     depends_on:
       order-db:
         condition: service_healthy
       order-redis:
         condition: service_healthy
+      product-service:
+        condition: service_started
     volumes:
       - ./common:/app/common
     networks:
@@ -411,12 +419,19 @@ services:
       - PYTHONPATH=/app/common
       - SERVICE_NAME=payment-service
       - ORDER_SERVICE_URL=http://order-service:8000
+      - PRODUCT_SERVICE_URL=http://product-service:8000
+      - MOCK_ORDER_COUNT=${MOCK_ORDER_COUNT:-250}
+      - MOCK_PAYMENT_COUNT=${MOCK_PAYMENT_COUNT:-200}
+      - MOCK_PRODUCT_MIN=${MOCK_PRODUCT_MIN:-50}
+      - MOCK_RESEED=${MOCK_RESEED:-false}
       - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service
       - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
       - PAYMENT_PROVIDER=MOCK
     depends_on:
       payment-db:
         condition: service_healthy
+      product-service:
+        condition: service_started
     volumes:
       - ./common:/app/common
     networks:
@@ -460,11 +475,21 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
       - SERVICE_NAME=interaction-service
+      - PRODUCT_SERVICE_URL=http://product-service:8000
+      - MOCK_PRODUCT_COUNT=${MOCK_PRODUCT_COUNT:-320}
+      - MOCK_CUSTOMER_COUNT=${MOCK_CUSTOMER_COUNT:-50}
+      - MOCK_REVIEW_COUNT=${MOCK_REVIEW_COUNT:-600}
+      - MOCK_WISHLIST_COUNT=${MOCK_WISHLIST_COUNT:-400}
+      - MOCK_TICKET_COUNT=${MOCK_TICKET_COUNT:-80}
+      - MOCK_PRODUCT_MIN=${MOCK_PRODUCT_MIN:-50}
+      - MOCK_RESEED=${MOCK_RESEED:-false}
       - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service,notification-service,interaction-service,api-gateway
       - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
     depends_on:
       interaction-db:
         condition: service_healthy
+      product-service:
+        condition: service_started
     volumes:
       - ./common:/app/common
     networks:
@@ -484,11 +509,17 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
       - SERVICE_NAME=promotion-service
-      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service,notification-service,interaction-service,promotion-service,api-gateway
+      - PRODUCT_SERVICE_URL=http://product-service:8000
+      - MOCK_PRODUCT_COUNT=${MOCK_PRODUCT_COUNT:-320}
+      - MOCK_FLASH_SALE_COUNT=${MOCK_FLASH_SALE_COUNT:-40}
+      - MOCK_PRODUCT_MIN=${MOCK_PRODUCT_MIN:-50}
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,catalog-service,inventory-service,cart-service,shipping-service,user-service,recommender-ai-service,notification-service,interaction-service,promotion-service,api-gateway,product-service
       - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-ecommerce_shared_secret}
     depends_on:
       promotion-db:
         condition: service_healthy
+      product-service:
+        condition: service_started
     volumes:
       - ./common:/app/common
     networks:
@@ -506,9 +537,12 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=product-db
       - DB_PORT=${DB_PORT:-5432}
+      - PROMOTION_SERVICE_URL=http://promotion-service:8000
+      - MOCK_PRODUCT_COUNT=${MOCK_PRODUCT_COUNT:-320}
+      - MOCK_RESEED=${MOCK_RESEED:-false}
       - PYTHONPATH=/app/common
       - SERVICE_NAME=product-service
-      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service,promotion-service
     depends_on:
       product-db:
         condition: service_healthy
@@ -565,12 +599,19 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_HOST=cart-db
       - DB_PORT=${DB_PORT:-5432}
+      - PRODUCT_SERVICE_URL=http://product-service:8000
+      - MOCK_PRODUCT_COUNT=${MOCK_PRODUCT_COUNT:-320}
+      - MOCK_CUSTOMER_COUNT=${MOCK_CUSTOMER_COUNT:-50}
+      - MOCK_PRODUCT_MIN=${MOCK_PRODUCT_MIN:-50}
+      - MOCK_RESEED=${MOCK_RESEED:-false}
       - PYTHONPATH=/app/common
       - SERVICE_NAME=cart-service
       - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service
     depends_on:
       cart-db:
         condition: service_healthy
+      product-service:
+        condition: service_started
     volumes:
       - ./common:/app/common
     networks:
@@ -592,6 +633,8 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - SHIP_SERVICE_URL=http://shipping-service:8000
       - PYTHONPATH=/app/common
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=payments
     depends_on:
       payment-db:
         condition: service_healthy
@@ -615,19 +658,65 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
       - SERVICE_NAME=shipping-service
+      - ORDER_SERVICE_URL=http://order-service:8000
+      - PRODUCT_SERVICE_URL=http://product-service:8000
+      - MOCK_ORDER_COUNT=${MOCK_ORDER_COUNT:-250}
+      - MOCK_SHIPPING_COUNT=${MOCK_SHIPPING_COUNT:-180}
+      - MOCK_PRODUCT_MIN=${MOCK_PRODUCT_MIN:-50}
+      - MOCK_RESEED=${MOCK_RESEED:-false}
       - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service
     depends_on:
       shipping-db:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+    volumes:
+      - ./common:/app/common
+    networks:
+      - ecommerce-net
+
+  shipping-consumer:
+    build: ./shipping-service
+    command: ["python", "manage.py", "consume_payments"]
+    environment:
+      - SECRET_KEY=${SECRET_KEY_SHIP:-ship-service-dev-key}
+      - DB_NAME=${DB_NAME_SHIP:-ship_db}
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_HOST=shipping-db
+      - DB_PORT=${DB_PORT:-5432}
+      - PYTHONPATH=/app/common
+      - SERVICE_NAME=shipping-service
+      - ORDER_SERVICE_URL=http://order-service:8000
+      - PAY_SERVICE_URL=http://payment-service:8000
+      - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN:-internal-dev-token}
+      - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
+      - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=shippings
+    depends_on:
+      shipping-db:
+        condition: service_healthy
+      shipping-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+      payment-outbox-worker:
+        condition: service_started
+      rabbitmq:
         condition: service_healthy
     volumes:
       - ./common:/app/common
     networks:
       - ecommerce-net
 
-
-
   recommender-ai-service:
     build: ./recommender-ai-service
+    env_file:
+      - env
     ports:
       - "${PORT_RECOMMENDER:-8011}:8000"
     environment:
@@ -641,10 +730,9 @@ services:
       - PRODUCT_SERVICE_URL=http://product-service:8000
       - INTERACTION_SERVICE_URL=http://interaction-service:8000
       - IMPLICIT_CF_DATA_DIR=/app/data/implicit_cf
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_MODEL=${GROQ_MODEL:-fast}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # GROQ_API_KEY / GROQ_MODEL / OPENAI_API_KEY / ANTHROPIC_API_KEY:
+      # lấy từ env_file (env) — KHÔNG override bằng ${VAR:-} vì compose chỉ
+      # substitute từ shell hoặc file .env, sẽ ghi đè key trong env thành rỗng.
       - PYTHONPATH=/app/common
       # Neo4j Config
       - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
@@ -654,14 +742,23 @@ services:
       - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,product-service,cart-service,shipping-service,user-service,recommender-ai-service
       - INTERNAL_TOKEN=${INTERNAL_TOKEN:-internal-dev-token}
       - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-internal-signing-secret}
+      - MOCK_PRODUCT_COUNT=${MOCK_PRODUCT_COUNT:-320}
+      - MOCK_CUSTOMER_COUNT=${MOCK_CUSTOMER_COUNT:-50}
+      - MOCK_BEHAVIOR_COUNT=${MOCK_BEHAVIOR_COUNT:-8000}
+      - MOCK_RECOMMENDATION_LOG_COUNT=${MOCK_RECOMMENDATION_LOG_COUNT:-300}
+      - MOCK_PRODUCT_MIN=${MOCK_PRODUCT_MIN:-50}
+      - MOCK_RESEED=${MOCK_RESEED:-false}
     volumes:
       - ./common:/app/common
       - ./recommender-ai-service/data:/app/data
+      - ./recommender-ai-service/rag:/app/rag
       - ./recommender-ai-service/app/services/ai_engine/kb:/app/app/services/ai_engine/kb
     depends_on:
       recommender-db:
         condition: service_healthy
       neo4j:
+        condition: service_started
+      product-service:
         condition: service_started
     networks:
       - ecommerce-net
@@ -750,7 +847,11 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
       - PYTHONPATH=/app/common
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=order_outboxevent
     depends_on:
+      order-service:
+        condition: service_started
       order-db:
         condition: service_healthy
       rabbitmq:
@@ -773,7 +874,11 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
       - PYTHONPATH=/app/common
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=inventory_outboxevent
     depends_on:
+      inventory-service:
+        condition: service_started
       inventory-db:
         condition: service_healthy
       rabbitmq:
@@ -797,7 +902,11 @@ services:
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
       - RESERVATION_TTL_MINUTES=${RESERVATION_TTL_MINUTES:-15}
       - PYTHONPATH=/app/common
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=inventory_outboxevent
     depends_on:
+      inventory-service:
+        condition: service_started
       inventory-db:
         condition: service_healthy
       rabbitmq:
@@ -820,7 +929,11 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=order_outboxevent
     depends_on:
+      order-service:
+        condition: service_started
       order-db:
         condition: service_healthy
       rabbitmq:
@@ -843,7 +956,11 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=interaction_outboxevent
     depends_on:
+      interaction-service:
+        condition: service_started
       interaction-db:
         condition: service_healthy
       rabbitmq:
@@ -866,7 +983,11 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=payments
     depends_on:
+      payment-service:
+        condition: service_started
       payment-db:
         condition: service_healthy
       rabbitmq:
@@ -889,7 +1010,11 @@ services:
       - DB_PORT=${DB_PORT:-5432}
       - PYTHONPATH=/app/common
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=payment_outbox
     depends_on:
+      payment-service:
+        condition: service_started
       payment-db:
         condition: service_healthy
       rabbitmq:
@@ -915,7 +1040,11 @@ services:
       - RABBITMQ_PASS=${RABBITMQ_PASS:-password}
       - PYTHONPATH=/app/common
       - SERVICE_NAME=dlq-consumer
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=dlq_events
     depends_on:
+      payment-service:
+        condition: service_started
       payment-db:
         condition: service_healthy
       rabbitmq:
@@ -943,7 +1072,11 @@ services:
       - RABBITMQ_URL=amqp://user:password@rabbitmq:5672/
       - MODEL_SERVING_URL=http://model-serving-service:8000
       - PYTHONPATH=/app/common
+      - SKIP_MIGRATE=1
+      - WAIT_FOR_TABLE=customer_behaviors
     depends_on:
+      recommender-ai-service:
+        condition: service_started
       recommender-db:
         condition: service_healthy
       rabbitmq:

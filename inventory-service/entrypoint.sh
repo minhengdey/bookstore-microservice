@@ -6,10 +6,13 @@ while ! python -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_
 done
 echo "PostgreSQL started"
 
-echo "Running migrations..."
-python manage.py makemigrations inventory --noinput
-python manage.py migrate
-python manage.py seed_mock || true
+if [ -z "$SKIP_MIGRATE" ]; then
+  echo "Running migrations..."
+  python manage.py makemigrations inventory --noinput || true
+  python manage.py migrate --noinput
+else
+  . /app/common/docker/wait-for-tables.sh
+fi
 
 if [ $# -eq 0 ]; then
   echo "Starting server..."

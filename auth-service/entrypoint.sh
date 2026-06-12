@@ -23,8 +23,7 @@ echo "[entrypoint] Installing common package..."
 if [ -d /app/common ]; then
     pip install -q -e /app/common || true
 fi
-python manage.py makemigrations authentication --no-input
+python manage.py makemigrations authentication --noinput || true
 python manage.py migrate --no-input
-python manage.py seed_mock || true
-python manage.py bootstrap_default_admin --no-input
+python manage.py bootstrap_default_users --no-input
 exec python manage.py runserver 0.0.0.0:8000

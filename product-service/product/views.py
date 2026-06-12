@@ -29,7 +29,8 @@ class ProductListView(APIView):
         min_price = request.query_params.get("min_price")
         max_price = request.query_params.get("max_price")
         sort_by = request.query_params.get("sort_by")
-        
+        flash_sale = request.query_params.get("flash_sale")
+
         try:
             version = redis_client.get("product_list_version") or "1"
             cache_key = f"product:list:v{version}:{page}:{page_size}:{keyword or 'all'}:{category_id}:{brand_id}:{min_price}:{max_price}:{sort_by}"
@@ -39,8 +40,11 @@ class ProductListView(APIView):
         except Exception:
             cache_key = None
 
-        objs = _prod_svc.list()
-        
+        if flash_sale in ("true", "1", "yes"):
+            objs = _prod_svc.list_flash_sale()
+        else:
+            objs = _prod_svc.list()
+
         if category_id:
             objs = objs.filter(category_id=category_id)
         if brand_id:
@@ -155,6 +159,13 @@ class InternalReleaseStockView(APIView):
             return Response({"message": "Stock released successfully"})
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class InternalSyncFlashSalesView(APIView):
+    @require_internal
+    def post(self, request):
+        result = _prod_svc.sync_flash_sales_from_promotion()
+        return Response(result)
 
 class CategoryListView(APIView):
     def get(self, request):

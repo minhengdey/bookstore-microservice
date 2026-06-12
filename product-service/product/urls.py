@@ -5,6 +5,7 @@ from .views import (
     BrandListView, BrandDetailView,
     ProductVariantListView, ProductVariantDetailView,
     InternalReserveStockView, InternalReleaseStockView,
+    InternalSyncFlashSalesView,
     InventoryTransactionListView
 )
 
@@ -20,4 +21,5 @@ urlpatterns = [
     path("inventory-transactions/", InventoryTransactionListView.as_view()),
     path("internal/reserve-stock/", InternalReserveStockView.as_view()),
     path("internal/release-stock/", InternalReleaseStockView.as_view()),
+    path("internal/sync-flash-sales/", InternalSyncFlashSalesView.as_view()),
 ]

@@ -271,6 +271,16 @@ def main():
             }],
             "shipping_fee": state.get("shipping_fee", 30000),
             "shipping_method_id": state.get("shipping_method_id"),
+            "shipping_address": {
+                "recipient_name": "E2E User",
+                "phone": "0901234567",
+                "address_line": "123 Test Street",
+                "city": "Hà Nội",
+                "country": "Việt Nam",
+                "postal_code": "100000",
+                "shipping_method_id": state.get("shipping_method_id"),
+                "distance_km": 5.0,
+            },
             "promotion_code": state.get("promotion_code"),
         }
         body_str = json.dumps(payload, separators=(",", ":"), sort_keys=True)
@@ -309,35 +319,30 @@ def main():
 
     results.append(run_step("10. Payment (COD)", step_payment))
 
-    def step_shipping_create(s):
-        import json
-        body = {"order_id": state["order_id"]}
-        body_str = json.dumps(body, separators=(",", ":"), sort_keys=True)
-        r = requests.post(
-            f"{SHIP_URL}/shipping/create/",
-            data=body_str.encode(),
-            headers={**headers, "Content-Type": "application/json"},
-            timeout=15,
-        )
-        if r.status_code not in (200, 201):
-            return s.fail(f"HTTP {r.status_code}: {r.text[:200]}")
-        s.ok(f"shipping_id={r.json().get('id')}")
-
-    results.append(run_step("11. Create Shipping", step_shipping_create))
-
-    def step_tracking(s):
-        r = requests.get(
-            f"{SHIP_URL}/api/shippings/order/{state['order_id']}/",
-            headers=headers,
-            timeout=15,
-        )
-        if r.status_code != 200:
-            return s.fail(f"HTTP {r.status_code}: {r.text[:200]}")
-        data = r.json()
+    def step_wait_shipping(s):
+        deadline = time.time() + 45
+        data = None
+        while time.time() < deadline:
+            r = requests.get(
+                f"{SHIP_URL}/api/shippings/order/{state['order_id']}/",
+                headers=headers,
+                timeout=15,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("tracking_number") and data.get("address") and data.get("statuses"):
+                    break
+            time.sleep(2)
+        if not data:
+            return s.fail("Shipping record not created within timeout")
+        if not data.get("address"):
+            return s.fail("Shipping address missing in DB")
+        if not data.get("statuses"):
+            return s.fail("Shipping timeline missing in DB")
         tn = data.get("tracking_number", "")
         s.ok(f"tracking={tn}, status={data.get('status')}")
 
-    results.append(run_step("12. Shipping Tracking API", step_tracking))
+    results.append(run_step("11. Auto Shipping Record", step_wait_shipping))
 
     def _gateway_session_login(session):
         r1 = session.get(f"{GATEWAY_URL}/login/", timeout=15)

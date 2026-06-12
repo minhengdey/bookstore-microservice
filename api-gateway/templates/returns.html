@@ -37,7 +37,7 @@
                     <td><strong>#{{ order.id }}</strong></td>
                     <td>{{ order.order_date_fmt }}</td>
                     <td>{{ order.total_amount_fmt }}</td>
-                    <td>{{ order.status_vi }}</td>
+                    <td><span class="badge {{ order.status|order_status_badge }}">{% if order.status_vi %}{{ order.status_vi }}{% else %}{{ order.status|vi_status }}{% endif %}</span></td>
                     <td>
                         {% if order.status == 'DELIVERED' or order.status == 'SHIPPING' %}
                         <form method="POST" action="/returns/{{ order.id }}/" style="display: flex; gap: 8px; align-items: center;">

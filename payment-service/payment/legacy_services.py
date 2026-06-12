@@ -2,7 +2,7 @@ import os
 import uuid
 import logging
 from django.db import transaction
-from .legacy_models import Payment, PaymentMethod, Transaction, Refund
+from .legacy_models import Payment, PaymentMethod, Transaction, Refund, ShippingStatus
 from common.client import InternalClient
 
 logger = logging.getLogger(__name__)
@@ -37,8 +37,27 @@ class PaymentService:
             )
             if r.status_code not in (200, 201):
                 logger.warning(f"Failed to mark order {order_id} as PAID: {r.text}")
+                return
+            r2 = self.client.post(
+                f"{ORDER_SERVICE_URL}/orders/internal/{order_id}/advance-processing/",
+                json={},
+            )
+            if r2.status_code not in (200, 201):
+                logger.warning(f"Failed to advance order {order_id} to PROCESSING: {r2.text}")
         except Exception as e:
             logger.warning(f"Failed to sync order {order_id} status after payment: {e}")
+
+    def update_shipping_status(self, order_id: int, shipping_status: str, failure_reason: str = ""):
+        payment = Payment.objects.filter(order_id=order_id).first()
+        if not payment:
+            raise ValueError(f"Payment for order {order_id} not found")
+        payment.shipping_status = shipping_status
+        if failure_reason:
+            payment.shipping_failure_reason = failure_reason[:500]
+        elif shipping_status != ShippingStatus.FAILED:
+            payment.shipping_failure_reason = ""
+        payment.save(update_fields=["shipping_status", "shipping_failure_reason"])
+        return payment
 
     def process_payment(self, order_id: int, amount: float, method_id: int = None):
         import time
@@ -95,7 +114,7 @@ class PaymentService:
                 }
                 PaymentOutbox.objects.create(
                     aggregate_id=str(payment.id),
-                    event_type="payment_completed",
+                    event_type="payment.succeeded",
                     payload=outbox_payload
                 )
                 transaction.on_commit(lambda oid=order_id: self._sync_order_paid(oid))

@@ -18,7 +18,7 @@
     const staticBase = window.BookAI_StaticUrl || "";
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = `${staticBase}/static/chatbot-widget.css?v=20260406`;
+    link.href = `${staticBase}/static/chatbot-widget.css?v=20260408`;
     document.head.appendChild(link);
 
     // Chèn bộ xương HTML (Widget Skeleton)
@@ -135,63 +135,15 @@
         const msgDiv = document.createElement("div");
         msgDiv.className = `ecommerce-ai-msg ${isUser ? 'ecommerce-ai-msg-user' : 'ecommerce-ai-msg-ai'}`;
         
-        // Simple Markdown
+        // Markdown nhẹ: link, bold, bullet, xuống dòng
         let formatted = text
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="ecommerce-ai-product-link">$1</a>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/\n/g, '<br>');
+            .replace(/^\s*[-*]\s+/gm, "• ")
+            .replace(/\n/g, "<br>");
             
         msgDiv.innerHTML = `<p>${formatted}</p>`;
         body.insertBefore(msgDiv, typing);
-        scrollToBottom();
-    };
-
-    const formatPrice = (value) => {
-        const num = Number(value);
-        if (!Number.isFinite(num)) return null;
-        return `${num.toLocaleString("vi-VN")}₫`;
-    };
-
-    const addRecommendedProducts = (products) => {
-        if (!Array.isArray(products) || products.length === 0) return;
-
-        const wrap = document.createElement("div");
-        wrap.className = "ecommerce-ai-msg ecommerce-ai-msg-ai";
-
-        const itemsHtml = products.slice(0, 5).map((p) => {
-            const productId = Number(p.product_id || p.id);
-            if (!Number.isFinite(productId)) return "";
-            const name = String(p.name || `Sản phẩm #${productId}`);
-            const safeName = name.replace(/[&<>"']/g, (ch) => ({
-                "&": "&amp;",
-                "<": "&lt;",
-                ">": "&gt;",
-                "\"": "&quot;",
-                "'": "&#39;"
-            }[ch]));
-            const priceText = formatPrice(p.price);
-            const metaParts = [];
-            if (p.sku) metaParts.push(`SKU: ${p.sku}`);
-            if (priceText) metaParts.push(`Giá: ${priceText}`);
-            const meta = metaParts.join(" • ");
-
-            return `
-                <li style="margin: 8px 0;">
-                    <a href="/products/${productId}/" style="color: inherit; text-decoration: underline; font-weight: 600;">
-                        ${safeName}
-                    </a>
-                    ${meta ? `<div style="font-size: 0.8rem; opacity: 0.85;">${meta}</div>` : ""}
-                </li>
-            `;
-        }).join("");
-
-        if (!itemsHtml.trim()) return;
-
-        wrap.innerHTML = `
-            <p style="margin-bottom: 8px;">🛍️ Một vài sản phẩm phù hợp cho bạn nè:</p>
-            <ul style="margin: 0; padding-left: 18px;">${itemsHtml}</ul>
-        `;
-        body.insertBefore(wrap, typing);
         scrollToBottom();
     };
 
@@ -236,9 +188,6 @@
                 addMessage(data.answer, false);
                 chatHistory.push(["assistant", data.answer]);
                 saveHistory(chatHistory);
-            }
-            if (Array.isArray(data.products) && data.products.length > 0) {
-                addRecommendedProducts(data.products);
             }
         } catch (error) {
             typing.classList.remove("ecommerce-ai-show");

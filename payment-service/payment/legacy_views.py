@@ -103,3 +103,20 @@ class InternalPaymentView(APIView):
             return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
         except (KeyError, ValueError) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class InternalPaymentShippingStatusView(APIView):
+    @require_internal
+    def post(self, request, order_id):
+        try:
+            shipping_status = request.data.get("shipping_status")
+            if not shipping_status:
+                return Response({"error": "shipping_status required"}, status=status.HTTP_400_BAD_REQUEST)
+            payment = _pay_svc.update_shipping_status(
+                order_id=int(order_id),
+                shipping_status=shipping_status,
+                failure_reason=request.data.get("shipping_failure_reason", ""),
+            )
+            return Response(PaymentSerializer(payment).data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)

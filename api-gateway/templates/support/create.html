@@ -1,31 +1,32 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 
 {% block title %}Tạo ticket hỗ trợ{% endblock %}
 
 {% block content %}
-<h2 style="margin-bottom: 20px;">Tạo ticket hỗ trợ</h2>
+<h2 class="section-title" style="margin-bottom: 20px;">Tạo ticket hỗ trợ</h2>
 
-<div class="card" style="max-width: 600px;">
+<div class="card">
     <form method="POST">
         {% csrf_token %}
-        <div style="margin-bottom: 16px;">
-            <label style="display: block; font-weight: 600; margin-bottom: 6px;">Tiêu đề *</label>
-            <input type="text" name="subject" class="form-control" required placeholder="VD: Đơn hàng chưa nhận được" style="width: 100%; padding: 10px; border: 1px solid #E5E7EB; border-radius: 8px;">
+        <div class="form-group">
+            <label>Tiêu đề *</label>
+            <input type="text" name="subject" required placeholder="Ví dụ: Đơn hàng chưa nhận được">
         </div>
-        <div style="margin-bottom: 16px;">
-            <label style="display: block; font-weight: 600; margin-bottom: 6px;">Liên quan đơn hàng (tuỳ chọn)</label>
-            <select name="order_id" style="width: 100%; padding: 10px; border: 1px solid #E5E7EB; border-radius: 8px;">
-                <option value="">-- Không liên quan đơn hàng --</option>
+        <div class="form-group">
+            <label>Liên quan đơn hàng (tuỳ chọn)</label>
+            <select name="order_id">
+                <option value="">— Không liên quan đơn hàng —</option>
                 {% for order in orders %}
-                <option value="{{ order.id }}">#{{ order.id }} — {{ order.total_amount|floatformat:0 }} đ ({{ order.status }})</option>
+                <option value="{{ order.id }}">Đơn #{{ order.id }} — {{ order.total_amount|vnd }} ({{ order.status|vi_status }})</option>
                 {% endfor %}
             </select>
         </div>
-        <div style="margin-bottom: 16px;">
-            <label style="display: block; font-weight: 600; margin-bottom: 6px;">Nội dung *</label>
-            <textarea name="content" rows="6" required placeholder="Mô tả chi tiết vấn đề của bạn..." style="width: 100%; padding: 10px; border: 1px solid #E5E7EB; border-radius: 8px; font-family: inherit;"></textarea>
+        <div class="form-group">
+            <label>Nội dung *</label>
+            <textarea name="content" rows="6" required placeholder="Mô tả chi tiết vấn đề của bạn..."></textarea>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div class="page-actions" style="margin-top: 0;">
             <button type="submit" class="btn btn-primary">Gửi ticket</button>
             <a href="/support/" class="btn btn-secondary">Huỷ</a>
         </div>

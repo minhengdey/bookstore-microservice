@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load custom_filters %}
 {% block content %}
-<h1 class="page-title">🛒 Giỏ hàng{% if 'CUSTOMER' in request.session.user.roles %} của tôi{% else %} – Khách #{{ customer_id }}{% endif %}</h1>
+<h1 class="page-title">🛒 Giỏ hàng{% if 'CUSTOMER' in request.session.user.roles %} của tôi{% endif %}</h1>
 
 <div class="card">
     <h2>Thêm sản phẩm</h2>
@@ -26,7 +26,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>#</th>
+                    <th>STT</th>
                     <th>Sản phẩm</th>
                     <th>Số lượng</th>
                     <th>Đơn giá</th>
@@ -37,7 +37,7 @@
             <tbody>
                 {% for item in cart.items %}
                 <tr>
-                    <td><span class="badge">{{ item.id }}</span></td>
+                    <td>{{ forloop.counter }}</td>
                     <td><a href="/products/{{ item.product_id }}/"
                             style="color:inherit;text-decoration:underline;">{{ item.product_name }}</a></td>
                     <td>{{ item.quantity }}</td>

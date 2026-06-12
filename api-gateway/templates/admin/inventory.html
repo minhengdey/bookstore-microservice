@@ -5,10 +5,11 @@
     <h1 style="margin: 0; font-size: 1.8rem;">Quản lý Tồn Kho</h1>
 </div>
 
-<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+<div class="layout-2col-21">
     <!-- Lịch sử giao dịch -->
     <div class="card">
         <h3 style="margin-top: 0;">Lịch sử Giao dịch (Inventory Transactions)</h3>
+        <div class="table-wrap">
         <table>
             <thead>
                 <tr>
@@ -48,6 +49,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 
     <!-- Form tạo giao dịch thủ công -->
@@ -74,7 +76,7 @@
                 </select>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="layout-2col" style="gap: 16px;">
                 <div class="form-group">
                     <label>Mức thay đổi</label>
                     <input type="number" name="quantity_changed" class="form-control" required placeholder="VD: 10, -5">

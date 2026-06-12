@@ -1,60 +1,112 @@
 #!/bin/sh
-# Chạy seed mock data cho tất cả microservices (theo thứ tự phụ thuộc).
-# Yêu cầu: Docker Compose đang chạy (docker compose up -d).
-# Cách chạy: ./scripts/seed_all.sh   hoặc   sh scripts/seed_all.sh
+# Seed mock data lớn cho toàn bộ microservices (theo thứ tự phụ thuộc).
+# Lưu ý: docker compose up đã tự seed qua entrypoint — script này dùng khi muốn seed lại thủ công.
+#
+# Cách dùng:
+#   ./scripts/seed_all.sh
+#   ./scripts/seed_all.sh --clear          # xóa và seed lại toàn bộ
+#   MOCK_PRODUCT_COUNT=400 ./scripts/seed_all.sh --clear
 
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-SERVICES="auth-service user-service product-service cart-service order-service payment-service shipping-service recommender-ai-service"
-
-echo "=== Seed mock data (root: $ROOT) ==="
-
-for svc in $SERVICES; do
-  echo ""
-  echo "[$svc] Running seed_mock..."
-  docker compose exec -T "$svc" python manage.py seed_mock
-  echo "[$svc] OK"
-  # After seeding, ensure serial sequences are aligned to avoid id collisions
-  case "$svc" in
-    auth-service)
-      echo "[auth-service] Fixing sequence for auth_users..."
-      docker run --rm -e PGPASSWORD=${PGPASSWORD:-minhanh2722004} postgres:15-alpine \
-        psql -h host.docker.internal -p 5433 -U postgres -d auth_db -c "SELECT setval(pg_get_serial_sequence('auth_users','id'), COALESCE((SELECT MAX(id) FROM auth_users),1));"
-      ;;
-    user-service)
-      echo "[user-service] Fixing sequence for users..."
-      docker run --rm -e PGPASSWORD=${PGPASSWORD:-minhanh2722004} postgres:15-alpine \
-        psql -h host.docker.internal -p 55437 -U postgres -d user_db -c "SELECT setval(pg_get_serial_sequence('users','id'), COALESCE((SELECT MAX(id) FROM users),1));"
-      ;;
-    product-service)
-      echo "[product-service] Fixing sequence for products..."
-      docker run --rm -e PGPASSWORD=${PGPASSWORD:-minhanh2722004} postgres:15-alpine \
-        psql -h host.docker.internal -p 55432 -U postgres -d product_db -c "SELECT setval(pg_get_serial_sequence('products','id'), COALESCE((SELECT MAX(id) FROM products),1));"
-      ;;
-    order-service)
-      echo "[order-service] Fixing sequence for orders..."
-      docker run --rm -e PGPASSWORD=${PGPASSWORD:-minhanh2722004} postgres:15-alpine \
-        psql -h host.docker.internal -p 55434 -U postgres -d order_db -c "SELECT setval(pg_get_serial_sequence('orders','id'), COALESCE((SELECT MAX(id) FROM orders),1));"
-      ;;
-    payment-service)
-      echo "[payment-service] Fixing sequence for payments..."
-      docker run --rm -e PGPASSWORD=${PGPASSWORD:-minhanh2722004} postgres:15-alpine \
-        psql -h host.docker.internal -p 55435 -U postgres -d pay_db -c "SELECT setval(pg_get_serial_sequence('payments','id'), COALESCE((SELECT MAX(id) FROM payments),1));"
-      ;;
-    shipping-service)
-      echo "[shipping-service] Fixing sequence for shippings..."
-      docker run --rm -e PGPASSWORD=${PGPASSWORD:-minhanh2722004} postgres:15-alpine \
-        psql -h host.docker.internal -p 55436 -U postgres -d ship_db -c "SELECT setval(pg_get_serial_sequence('shippings','id'), COALESCE((SELECT MAX(id) FROM shippings),1));"
-      ;;
-    recommender-ai-service)
-      echo "[recommender-ai-service] Fixing sequence for recommender (if applicable)..."
-      docker run --rm -e PGPASSWORD=${PGPASSWORD:-minhanh2722004} postgres:15-alpine \
-        psql -h host.docker.internal -p 55438 -U postgres -d recommender_db -c "SELECT setval(pg_get_serial_sequence('recommender_table','id'), COALESCE((SELECT MAX(id) FROM recommender_table),1));" || true
-      ;;
+CLEAR_FLAG=""
+FORCE_FLAG=""
+for arg in "$@"; do
+  case "$arg" in
+    --clear) CLEAR_FLAG="--clear" ;;
+    --force) FORCE_FLAG="--force" ;;
   esac
 done
 
+if [ -n "$CLEAR_FLAG" ]; then
+  FORCE_FLAG="--force"
+fi
+
+PRODUCT_COUNT="${MOCK_PRODUCT_COUNT:-320}"
+CUSTOMER_COUNT="${MOCK_CUSTOMER_COUNT:-50}"
+SEED_ARGS="$CLEAR_FLAG $FORCE_FLAG --count $PRODUCT_COUNT"
+
+echo "=== Seed mock data (products=$PRODUCT_COUNT, customers=$CUSTOMER_COUNT) ==="
+
 echo ""
-echo "=== Hoàn thành seed tất cả services ==="
+echo "[auth-service] bootstrap_default_users..."
+docker compose exec -T -e MOCK_CUSTOMER_COUNT="$CUSTOMER_COUNT" auth-service \
+  python manage.py bootstrap_default_users --no-input
+echo "[auth-service] OK"
+
+echo ""
+echo "[user-service] seed_rbac..."
+docker compose exec -T user-service python manage.py seed_rbac
+echo "[user-service] OK"
+
+echo ""
+echo "[product-service] seed_mock $SEED_ARGS..."
+docker compose exec -T -e MOCK_PRODUCT_COUNT="$PRODUCT_COUNT" product-service \
+  python manage.py seed_mock $SEED_ARGS
+echo "[product-service] OK"
+
+echo ""
+echo "[promotion-service] seed_promotions..."
+docker compose exec -T \
+  -e MOCK_PRODUCT_COUNT="$PRODUCT_COUNT" \
+  -e MOCK_FLASH_SALE_COUNT="${MOCK_FLASH_SALE_COUNT:-40}" \
+  promotion-service python manage.py seed_promotions
+echo "[promotion-service] OK"
+
+echo ""
+echo "[product-service] sync_flash_sales..."
+docker compose exec -T product-service python manage.py sync_flash_sales || true
+echo "[product-service] flash sync OK"
+
+echo ""
+echo "[cart-service] seed_mock..."
+docker compose exec -T \
+  -e MOCK_PRODUCT_COUNT="$PRODUCT_COUNT" \
+  -e MOCK_CUSTOMER_COUNT="$CUSTOMER_COUNT" \
+  cart-service python manage.py seed_mock $CLEAR_FLAG $FORCE_FLAG
+echo "[cart-service] OK"
+
+echo ""
+echo "[order-service] seed_mock..."
+docker compose exec -T \
+  -e MOCK_PRODUCT_COUNT="$PRODUCT_COUNT" \
+  -e MOCK_CUSTOMER_COUNT="$CUSTOMER_COUNT" \
+  order-service python manage.py seed_mock $CLEAR_FLAG $FORCE_FLAG
+echo "[order-service] OK"
+
+echo ""
+echo "[payment-service] seed_mock..."
+docker compose exec -T payment-service python manage.py seed_mock $CLEAR_FLAG $FORCE_FLAG
+echo "[payment-service] OK"
+
+echo ""
+echo "[shipping-service] seed_mock..."
+docker compose exec -T shipping-service python manage.py seed_mock $CLEAR_FLAG $FORCE_FLAG
+echo "[shipping-service] OK"
+
+echo ""
+echo "[interaction-service] seed_mock..."
+docker compose exec -T \
+  -e MOCK_PRODUCT_COUNT="$PRODUCT_COUNT" \
+  -e MOCK_CUSTOMER_COUNT="$CUSTOMER_COUNT" \
+  interaction-service python manage.py seed_mock $CLEAR_FLAG $FORCE_FLAG
+echo "[interaction-service] OK"
+
+echo ""
+echo "[recommender-ai-service] seed_mock..."
+docker compose exec -T \
+  -e MOCK_PRODUCT_COUNT="$PRODUCT_COUNT" \
+  -e MOCK_CUSTOMER_COUNT="$CUSTOMER_COUNT" \
+  recommender-ai-service python manage.py seed_mock $CLEAR_FLAG $FORCE_FLAG
+echo "[recommender-ai-service] OK"
+
+echo ""
+echo "[recommender-ai-service] build_catalog_index --force..."
+docker compose exec -T recommender-ai-service python manage.py build_catalog_index --force
+echo "[recommender-ai-service] catalog index OK"
+
+echo ""
+echo "=== Hoàn thành seed toàn bộ hệ thống ==="
+echo "Gợi ý: đăng nhập customer1..customer${CUSTOMER_COUNT} / password123"

@@ -1,25 +1,374 @@
 {% extends "base.html" %}
 {% load custom_filters %}
 {% block content %}
-<h2 style="margin-bottom:20px;font-size:1.4rem;font-weight:700;color:#0f172a;">
-    {% if is_customer %}Cửa hàng trực tuyến{% else %}Quản lý hệ thống{% endif %}
-</h2>
 
-{% if is_customer %}
-<div class="card" style="background: linear-gradient(90deg, #ff7e5f 0%, #feb47b 100%); color: white; display: flex; justify-content: space-between; align-items: center; padding: 30px; border-radius: 20px;">
-    <div>
-        <h2 style="color: white; margin-bottom: 10px; font-size: 2rem;">Siêu Sale Giữa Tháng!</h2>
-        <p style="font-size: 1.1rem; opacity: 0.9;">Giảm giá lên đến 50% cho hàng ngàn sản phẩm hot. Nhanh tay kẻo lỡ!</p>
+{% if is_storefront %}
+<div class="home-page">
+
+    {# ── Hero ── #}
+    <section class="home-hero full-bleed">
+        <div class="home-hero__content">
+            {% if is_guest %}
+            <span class="home-hero__badge">Chào mừng bạn mới</span>
+            <h1 class="home-hero__title">Mua sắm thông minh,<br>ưu đãi mỗi ngày</h1>
+            <p class="home-hero__desc">Khám phá hàng ngàn sản phẩm chất lượng, flash sale hấp dẫn và gợi ý AI cá nhân hóa.</p>
+            {% else %}
+            <span class="home-hero__badge">Xin chào, {{ request.session.user.username }}</span>
+            <h1 class="home-hero__title">Chào mừng trở lại!</h1>
+            <p class="home-hero__desc">Tiếp tục mua sắm, theo dõi đơn hàng và nhận gợi ý sản phẩm dành riêng cho bạn.</p>
+            {% endif %}
+            <div class="home-hero__actions">
+                {% if is_guest %}
+                <a href="/login/" class="btn home-hero__btn-primary">Đăng nhập</a>
+                <a href="/register/" class="btn home-hero__btn-outline">Tạo tài khoản</a>
+                {% else %}
+                <a href="/promotions/" class="btn home-hero__btn-primary">Xem khuyến mãi</a>
+                <a href="/products/" class="btn home-hero__btn-outline">Mua sắm ngay</a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="home-hero__visual" aria-hidden="true">
+            <div class="home-hero__card-stack">
+                <div class="home-hero__card home-hero__card--main">🛍️</div>
+                <div class="home-hero__card home-hero__card--float1">⚡</div>
+                <div class="home-hero__card home-hero__card--float2">✨</div>
+            </div>
+        </div>
+    </section>
+
+    {# ── Trust bar ── #}
+    <div class="home-trust-bar full-bleed">
+        <div class="home-trust-item">
+            <span class="home-trust-item__icon">🚚</span>
+            <div>
+                <strong>Giao hàng nhanh</strong>
+                <span>Toàn quốc, theo dõi đơn realtime</span>
+            </div>
+        </div>
+        <div class="home-trust-item">
+            <span class="home-trust-item__icon">🔒</span>
+            <div>
+                <strong>Thanh toán an toàn</strong>
+                <span>Bảo mật thông tin giao dịch</span>
+            </div>
+        </div>
+        <div class="home-trust-item">
+            <span class="home-trust-item__icon">🤖</span>
+            <div>
+                <strong>Gợi ý AI</strong>
+                <span>Sản phẩm phù hợp sở thích bạn</span>
+            </div>
+        </div>
+        <div class="home-trust-item">
+            <span class="home-trust-item__icon">↩️</span>
+            <div>
+                <strong>Đổi trả dễ dàng</strong>
+                <span>Hỗ trợ trong 7 ngày</span>
+            </div>
+        </div>
     </div>
-    <a href="/promotions/" class="btn" style="background: white; color: #ff7e5f; padding: 12px 24px; font-weight: bold; border-radius: 30px;">Xem Ngay</a>
+
+    {% if is_guest %}
+    <div class="home-guest-banner full-bleed">
+        <div class="home-guest-banner__text">
+            <strong>Bạn đang xem ở chế độ khách</strong>
+            <span>Duyệt sản phẩm miễn phí — đăng nhập để thêm giỏ hàng và đặt mua.</span>
+        </div>
+        <div class="home-guest-banner__actions">
+            <a href="/login/" class="btn btn-primary">Đăng nhập</a>
+            <a href="/register/" class="btn btn-secondary">Đăng ký</a>
+        </div>
+    </div>
+    {% else %}
+    <div class="section-band full-bleed">
+        <div class="home-section-head">
+            <div class="home-section-head__left">
+                <span class="home-section-head__eyebrow">Truy cập nhanh</span>
+                <h2 class="home-section-head__title">Tiện ích dành cho bạn</h2>
+            </div>
+        </div>
+        <div class="home-quick-grid">
+            <a href="/products/" class="home-quick-card">
+                <span class="home-quick-card__icon">🛍️</span>
+                <strong>Sản phẩm</strong>
+                <span>{{ total_products }} mặt hàng</span>
+            </a>
+            {% if request.session.user.entity_id %}
+            <a href="/cart/{{ request.session.user.entity_id }}/" class="home-quick-card">
+                <span class="home-quick-card__icon">🛒</span>
+                <strong>Giỏ hàng</strong>
+                <span>Xem &amp; thanh toán</span>
+            </a>
+            <a href="/orders/" class="home-quick-card">
+                <span class="home-quick-card__icon">📦</span>
+                <strong>Đơn hàng</strong>
+                <span>Theo dõi trạng thái</span>
+            </a>
+            {% endif %}
+            <a href="/promotions/" class="home-quick-card">
+                <span class="home-quick-card__icon">🏷️</span>
+                <strong>Khuyến mãi</strong>
+                <span>Ưu đãi hot</span>
+            </a>
+            <a href="/wishlist/" class="home-quick-card">
+                <span class="home-quick-card__icon">❤️</span>
+                <strong>Yêu thích</strong>
+                <span>Danh sách đã lưu</span>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Flash Sale ── #}
+    {% if flash_products and flash_pages %}
+    <section class="section-band full-bleed home-flash-section">
+        <div class="home-section-head">
+            <div class="home-section-head__left">
+                <span class="home-section-head__eyebrow">⚡ Flash Sale</span>
+                <h2 class="home-section-head__title">Giá sốc hôm nay</h2>
+            </div>
+        </div>
+        <div class="home-pcarousel" data-pcarousel>
+            <div class="home-pcarousel__viewport">
+                <div class="home-pcarousel__track">
+                    {% for page in flash_pages %}
+                    <div class="home-pcarousel__page">
+                        {% for p in page %}
+                        {% if is_guest %}
+                        <div class="product-card product-card-readonly">
+                            <div class="product-image" style="position: relative;">
+                                {% if p.image_url %}
+                                <img src="{{ p.image_url }}" alt="{{ p.name }}" style="width:100%; height:100%; object-fit:cover; display:block; border-radius: inherit;">
+                                {% else %}🛍️{% endif %}
+                                <span class="flash-sale-badge">-{{ p.discount_pct }}%</span>
+                            </div>
+                            <div class="product-name">{{ p.name }}</div>
+                            <div class="product-price">
+                                <span class="product-price-current flash-sale-price">{{ p.display_price_fmt }}</span>
+                                <span class="product-price-original">{{ p.list_price_fmt }}</span>
+                            </div>
+                        </div>
+                        {% else %}
+                        <a href="/products/{{ p.id }}/" class="product-card">
+                            <div class="product-image" style="position: relative;">
+                                {% if p.image_url %}
+                                <img src="{{ p.image_url }}" alt="{{ p.name }}" style="width:100%; height:100%; object-fit:cover; display:block; border-radius: inherit;">
+                                {% else %}🛍️{% endif %}
+                                <span class="flash-sale-badge">-{{ p.discount_pct }}%</span>
+                            </div>
+                            <div class="product-name">{{ p.name }}</div>
+                            <div class="product-price">
+                                <span class="product-price-current flash-sale-price">{{ p.display_price_fmt }}</span>
+                                <span class="product-price-original">{{ p.list_price_fmt }}</span>
+                            </div>
+                        </a>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% if flash_pages|length > 1 %}
+            <div class="home-pcarousel__nav">
+                <button type="button" class="home-pcarousel__btn home-pcarousel__btn--prev" aria-label="Trang trước">‹</button>
+                <div class="home-pcarousel__dots"></div>
+                <button type="button" class="home-pcarousel__btn home-pcarousel__btn--next" aria-label="Trang sau">›</button>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if is_guest or is_customer %}
+    {# ── Danh mục ── #}
+    {% if categories %}
+    <section class="section-band full-bleed">
+        <div class="home-section-head">
+            <div class="home-section-head__left">
+                <span class="home-section-head__eyebrow">Khám phá</span>
+                <h2 class="home-section-head__title">Danh mục nổi bật</h2>
+            </div>
+        </div>
+        <div class="home-pcarousel" data-pcarousel>
+            <div class="home-pcarousel__viewport">
+                <div class="home-pcarousel__track">
+                    {% for page in category_pages %}
+                    <div class="home-pcarousel__page home-pcarousel__page--categories">
+                        {% for cat in page %}
+                        {% if is_guest %}
+                        <div class="home-category-card home-category-card--static">
+                            <div class="home-category-card__icon">
+                                {% if cat.name == 'Electronics' %}📱
+                                {% elif cat.name == 'Home Appliances' %}🏠
+                                {% elif cat.name == 'Fashion' %}👗
+                                {% elif cat.name == 'Beauty & Personal Care' %}💄
+                                {% elif cat.name == 'Sports & Outdoors' %}🏃
+                                {% elif cat.name == 'Grocery & Daily Essentials' %}🛒
+                                {% else %}🏷️{% endif %}
+                            </div>
+                            <span class="home-category-card__name">{{ cat.name }}</span>
+                        </div>
+                        {% else %}
+                        <a href="/products/?category_id={{ cat.id }}" class="home-category-card">
+                            <div class="home-category-card__icon">
+                                {% if cat.name == 'Electronics' %}📱
+                                {% elif cat.name == 'Home Appliances' %}🏠
+                                {% elif cat.name == 'Fashion' %}👗
+                                {% elif cat.name == 'Beauty & Personal Care' %}💄
+                                {% elif cat.name == 'Sports & Outdoors' %}🏃
+                                {% elif cat.name == 'Grocery & Daily Essentials' %}🛒
+                                {% else %}🏷️{% endif %}
+                            </div>
+                            <span class="home-category-card__name">{{ cat.name }}</span>
+                        </a>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% if category_pages|length > 1 %}
+            <div class="home-pcarousel__nav">
+                <button type="button" class="home-pcarousel__btn home-pcarousel__btn--prev" aria-label="Trang trước">‹</button>
+                <div class="home-pcarousel__dots"></div>
+                <button type="button" class="home-pcarousel__btn home-pcarousel__btn--next" aria-label="Trang sau">›</button>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if is_customer %}
+    {# ── Gợi ý AI — tất cả sản phẩm, sắp xếp theo điểm gợi ý ── #}
+    <section class="section-band full-bleed home-ai-section">
+        <div class="home-section-head">
+            <div class="home-section-head__left">
+                <span class="home-section-head__eyebrow">✨ AI Recommendation</span>
+                <h2 class="home-section-head__title">Gợi ý dành riêng cho bạn</h2>
+                <span class="home-section-head__meta">Tất cả {{ total_products }} sản phẩm — sắp xếp theo mức độ phù hợp</span>
+            </div>
+        </div>
+
+        {% if recommendation_products %}
+        <div id="home-products-grid" class="products-grid"
+            data-mode="customer"
+            data-page="1"
+            data-total-pages="{{ products_total_pages }}"
+            data-page-size="{{ products_page_size }}"
+            data-api="/api/home/products/">
+            {% for p in recommendation_products %}
+            <a href="/products/{{ p.id }}/" class="product-card">
+                <div class="product-image">
+                    {% if p.image_url %}
+                    <img src="{{ p.image_url }}" alt="{{ p.name }}"
+                        style="width:100%; height:100%; object-fit:cover; display:block; border-radius: inherit;">
+                    {% elif p.category and p.category.name == 'Electronics' %}📱
+                    {% elif p.category and p.category.name == 'Home Appliances' %}🏠
+                    {% elif p.category and p.category.name == 'Fashion' %}👗
+                    {% elif p.category and p.category.name == 'Beauty & Personal Care' %}💄
+                    {% elif p.category and p.category.name == 'Sports & Outdoors' %}🏃
+                    {% elif p.category and p.category.name == 'Grocery & Daily Essentials' %}🛒
+                    {% else %}🛍️{% endif %}
+                </div>
+                <div class="product-name">{{ p.name }}</div>
+                <div class="product-price">
+                    <span class="product-price-current">{{ p.display_price_fmt }}</span>
+                </div>
+                {% if p.category and p.category.name %}
+                <div class="product-stock">{{ p.category.name }}</div>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        <div id="home-products-sentinel" class="home-infinite-sentinel" aria-hidden="true"></div>
+        <div id="home-products-loading" class="home-infinite-loading" hidden>Đang tải thêm sản phẩm…</div>
+        {% else %}
+        <div class="empty">
+            <p>Hệ thống AI đang tìm hiểu sở thích của bạn. Hãy xem thêm sản phẩm để nhận gợi ý chính xác hơn!</p>
+        </div>
+        {% endif %}
+    </section>
+    {% elif is_guest %}
+    {# ── Sản phẩm nổi bật (khách) — cuộn dọc, tải thêm khi chạm cuối ── #}
+    <section class="section-band full-bleed">
+        <div class="home-section-head">
+            <div class="home-section-head__left">
+                <span class="home-section-head__eyebrow">Bán chạy</span>
+                <h2 class="home-section-head__title">Sản phẩm nổi bật</h2>
+                <span class="home-section-head__meta">{{ total_products }} sản phẩm đang bán</span>
+            </div>
+        </div>
+
+        {% if products %}
+        <div id="home-products-grid" class="products-grid"
+            data-mode="guest"
+            data-page="1"
+            data-total-pages="{{ products_total_pages }}"
+            data-page-size="{{ products_page_size }}"
+            data-api="/api/guest/products/">
+            {% for p in products %}
+            <div class="product-card product-card-readonly">
+                <div class="product-image">
+                    {% if p.image_url %}
+                    <img src="{{ p.image_url }}" alt="{{ p.name }}"
+                        style="width:100%; height:100%; object-fit:cover; display:block; border-radius: inherit;">
+                    {% elif p.category and p.category.name == 'Electronics' %}📱
+                    {% elif p.category and p.category.name == 'Home Appliances' %}🏠
+                    {% elif p.category and p.category.name == 'Fashion' %}👗
+                    {% elif p.category and p.category.name == 'Beauty & Personal Care' %}💄
+                    {% elif p.category and p.category.name == 'Sports & Outdoors' %}🏃
+                    {% elif p.category and p.category.name == 'Grocery & Daily Essentials' %}🛒
+                    {% else %}🛍️{% endif %}
+                </div>
+                <div class="product-name">{{ p.name }}</div>
+                <div class="product-price">
+                    <span class="product-price-current">{{ p.display_price_fmt }}</span>
+                </div>
+                {% if p.category and p.category.name %}
+                <div class="product-stock">{{ p.category.name }}</div>
+                {% endif %}
+                <div class="product-actions">
+                    <span class="btn btn-secondary btn-sm guest-action-disabled" style="flex: 1;" title="Đăng nhập để mua hàng">Đăng nhập để mua</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div id="home-products-sentinel" class="home-infinite-sentinel" aria-hidden="true"></div>
+        <div id="home-products-loading" class="home-infinite-loading" hidden>Đang tải thêm sản phẩm…</div>
+        {% else %}
+        <div class="empty">
+            <p>Hiện chưa có sản phẩm nào. Vui lòng quay lại sau!</p>
+        </div>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {% if is_guest %}
+    <section class="home-cta-panel full-bleed">
+        <h3>Sẵn sàng mua sắm?</h3>
+        <p>Đăng nhập hoặc tạo tài khoản để thêm vào giỏ hàng, đặt hàng và nhận gợi ý từ AI.</p>
+        <div class="home-cta-panel__actions">
+            <a href="/login/" class="btn btn-primary">Đăng nhập ngay</a>
+            <a href="/register/" class="btn btn-secondary">Tạo tài khoản miễn phí</a>
+        </div>
+    </section>
+    {% endif %}
+    {% endif %}
+
 </div>
-{% endif %}
+
+{% else %}
+{# ── Bảng điều khiển nhân viên / quản lý ── #}
+<div class="home-admin-hero">
+    <h2>Quản lý hệ thống</h2>
+    <p>Tổng quan nhanh và liên kết đến các khu vực vận hành.</p>
+</div>
+
 <div class="stats">
     <div class="stat">
         <div class="num">{{ total_products }}</div>
         <div class="lbl">Sản phẩm</div>
     </div>
-    {% if not is_customer %}
     <div class="stat">
         <div class="num">{{ total_customers }}</div>
         <div class="lbl">Khách hàng</div>
@@ -28,73 +377,21 @@
         <div class="num">{{ total_orders }}</div>
         <div class="lbl">Đơn hàng</div>
     </div>
-    {% endif %}
 </div>
+
 <div class="card">
-    <h2>Liên kết nhanh</h2>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;">
-        <a href="/products/" class="btn btn-primary">
-            {% if is_customer %}Xem sản phẩm{% else %}Quản lý sản phẩm{% endif %}
-        </a>
+    <h2 style="margin-top: 0;">Liên kết nhanh</h2>
+    <div class="home-admin-links">
+        <a href="/products/" class="btn btn-primary">Quản lý sản phẩm</a>
         <a href="/catalog/" class="btn btn-secondary">Danh mục</a>
-        {% if is_customer %}
-        {% if request.session.user.entity_id %}
-        <a href="/cart/{{ request.session.user.entity_id }}/" class="btn btn-success">Giỏ hàng</a>
-        <a href="/wishlist/" class="btn" style="background: var(--primary-light); color: var(--primary);">❤️ Yêu thích</a>
-        <a href="/recommendations/" class="btn btn-primary">Đề xuất AI</a>
-        <a href="/orders/" class="btn btn-secondary">Đơn hàng của tôi</a>
-        {% endif %}
-        {% else %}
         <a href="/orders/" class="btn btn-secondary">Đơn hàng</a>
-        {% endif %}
+        <a href="/staff/dashboard/" class="btn btn-secondary">Staff Portal</a>
     </div>
-</div>
-
-{% if is_customer %}
-<div class="card" style="background: linear-gradient(135deg, #fff5f7 0%, #fff 100%);">
-    <h2 style="color: var(--primary); display: flex; align-items: center; gap: 10px;">
-        💖 Gợi ý dành riêng cho bạn
-    </h2>
-    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 20px;">
-        Dựa trên sở thích của bạn, AI đã chọn ra những sản phẩm phù hợp nhất!
-    </p>
-
-    {% if recommendations %}
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px;">
-        {% for item in recommendations %}
-        <div class="card"
-            style="padding: 16px; margin-bottom: 0; transition: transform 0.3s; border-color: var(--border);">
-            <div
-                style="height: 130px; margin-bottom: 12px; border-radius: 18px; overflow: hidden; background: linear-gradient(135deg, var(--primary-light), var(--secondary-light)); display:flex; align-items:center; justify-content:center;">
-                {% if item.image_url %}
-                <img src="{{ item.image_url }}" alt="{{ item.name }}"
-                    style="width:100%; height:100%; object-fit:cover; display:block;">
-                {% elif item.category and item.category.name == 'Electronics' %}📱
-                {% elif item.category and item.category.name == 'Home Appliances' %}🏠
-                {% elif item.category and item.category.name == 'Fashion' %}👗
-                {% elif item.category and item.category.name == 'Beauty & Personal Care' %}💄
-                {% elif item.category and item.category.name == 'Sports & Outdoors' %}🏃
-                {% elif item.category and item.category.name == 'Grocery & Daily Essentials' %}🛒
-                {% else %}🛍️{% endif %}
-            </div>
-            <h4
-                style="font-size: 1rem; margin-bottom: 8px; color: var(--text-primary); height: 3rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
-                {{ item.name }}
-            </h4>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                <span style="font-weight: 700; color: var(--primary); font-size: 1.1rem;">{{ item.price|vnd }}</span>
-                <a href="/products/{{ item.id }}/" class="btn btn-primary btn-sm" style="border-radius: 20px;">Xem
-                    nha</a>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty">
-        <p>Hệ thống AI đang tìm hiểu sở thích của bạn... Hãy xem thêm nhiều sách hơn để mình có thể gợi ý chính xác nhé!
-            ✨</p>
-    </div>
-    {% endif %}
 </div>
 {% endif %}
+
+{% if is_guest or is_customer %}
+<script src="/static/home-storefront.js?v=20260612b"></script>
+{% endif %}
+
 {% endblock %}

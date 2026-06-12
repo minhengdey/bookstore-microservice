@@ -1,6 +1,10 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .views import _get, _post, _role, _entity_id, _list_data, _total_count, _fmt_vnd, SVC
+from .views import (
+    _get, _post, _role, _entity_id, _list_data, _total_count, _fmt_vnd, SVC,
+    _enrich_orders_with_customer_name, _enrich_with_customer_names, _resolve_customer_display_name,
+    ticket_chat_payload, _parse_chat_message, _post_ticket_reply,
+)
 from .permissions import require_staff
 
 INTERACTION = SVC["interaction_api"]
@@ -29,7 +33,9 @@ def staff_dashboard(request):
 
 @require_staff
 def staff_order_list(request):
-    orders = _list_data(_get(f"{SVC['order']}/orders/", request))
+    orders = _enrich_orders_with_customer_name(
+        request, _list_data(_get(f"{SVC['order']}/orders/", request))
+    )
     return render(request, "staff/orders.html", {"orders": orders, "role": _role(request)})
 
 
@@ -75,8 +81,12 @@ def staff_customer_list(request):
 @require_staff
 def staff_customer_detail(request, customer_id):
     customer = _get(f"{SVC['user']}/internal/customers/{customer_id}/", request)
-    orders = _list_data(_get(f"{SVC['order']}/orders/?customer_id={customer_id}", request))
-    tickets = _list_data(_get(f"{INTERACTION}/tickets/?customer_id={customer_id}", request))
+    orders = _enrich_orders_with_customer_name(
+        request, _list_data(_get(f"{SVC['order']}/orders/?customer_id={customer_id}", request))
+    )
+    tickets = _enrich_with_customer_names(
+        request, _list_data(_get(f"{INTERACTION}/tickets/?customer_id={customer_id}", request))
+    )
     return render(request, "staff/customer_detail.html", {
         "customer": customer,
         "orders": orders,
@@ -87,7 +97,9 @@ def staff_customer_detail(request, customer_id):
 
 @require_staff
 def staff_ticket_list(request):
-    tickets = _list_data(_get(f"{INTERACTION}/tickets/", request))
+    tickets = _enrich_with_customer_names(
+        request, _list_data(_get(f"{INTERACTION}/tickets/", request))
+    )
     return render(request, "staff/tickets.html", {"tickets": tickets, "role": _role(request)})
 
 
@@ -113,4 +125,39 @@ def staff_ticket_detail(request, ticket_id):
 
         return redirect("staff_ticket_detail", ticket_id=ticket_id)
 
-    return render(request, "staff/ticket_detail.html", {"ticket": ticket, "role": _role(request)})
+    customer_name = _resolve_customer_display_name(
+        request, ticket.get("customer_id") if isinstance(ticket, dict) else None
+    )
+    return render(request, "staff/ticket_detail.html", {
+        "ticket": ticket,
+        "customer_name": customer_name,
+        "role": _role(request),
+        "chat_api_url": f"/staff/tickets/{ticket_id}/api/messages/",
+    })
+
+
+@require_staff
+def staff_ticket_messages_api(request, ticket_id):
+    from django.http import JsonResponse
+
+    ticket = _get(f"{INTERACTION}/tickets/{ticket_id}/", request)
+    if not ticket:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    if request.method == "POST":
+        message = _parse_chat_message(request)
+        if not message:
+            return JsonResponse({"error": "Tin nhắn không được để trống."}, status=400)
+        resp = _post_ticket_reply(request, ticket_id, _entity_id(request), True, message)
+        if not resp or resp.status_code not in (200, 201):
+            return JsonResponse({"error": "Không gửi được tin nhắn."}, status=502)
+        if ticket.get("status") == "OPEN":
+            _post(
+                f"{INTERACTION}/tickets/{ticket_id}/",
+                json={"status": "IN_PROGRESS"},
+                request=request,
+                method="PATCH",
+            )
+        ticket = _get(f"{INTERACTION}/tickets/{ticket_id}/", request, cache_ttl=0)
+
+    return JsonResponse(ticket_chat_payload(ticket))

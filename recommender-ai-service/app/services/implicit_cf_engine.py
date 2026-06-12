@@ -115,6 +115,32 @@ class ImplicitCFEngine:
                 break
         return out
 
+    def item_popularity_scores(
+        self,
+        active_product_ids: set[int],
+        exclude_product_ids: set[int],
+    ) -> dict[int, float]:
+        """Column-norm scores from the item factor matrix (works for cold-start users)."""
+        self.reload()
+        if self._H is None or self._meta is None:
+            return {}
+
+        norms = np.linalg.norm(self._H, axis=0)
+        scores: dict[int, float] = {}
+        for col_idx, norm in enumerate(norms):
+            pid = self._local_id_for_col(int(col_idx))
+            if pid not in active_product_ids or pid in exclude_product_ids:
+                continue
+            scores[pid] = float(norm)
+
+        if not scores:
+            return {}
+
+        max_score = max(scores.values()) or 1.0
+        if max_score <= 0:
+            max_score = 1.0
+        return {pid: value / max_score for pid, value in scores.items()}
+
 
 _engine: ImplicitCFEngine | None = None
 

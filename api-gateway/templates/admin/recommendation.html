@@ -1,4 +1,5 @@
 {% extends "admin_base.html" %}
+{% load custom_filters %}
 
 {% block content %}
 <h1 style="margin: 0 0 24px; font-size: 1.8rem;">Quản lý AI Recommendation</h1>
@@ -13,10 +14,11 @@
 </div>
 {% endif %}
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+<div class="layout-2col" style="margin-bottom: 24px;">
     <div class="card">
         <h3 style="margin-top: 0;">Đánh giá Offline (BiLSTM)</h3>
         {% if offline_models %}
+        <div class="table-wrap">
         <table>
             <thead>
                 <tr><th>Model</th><th>Accuracy</th><th>F1-macro</th><th>F1-weighted</th><th>Epochs</th></tr>
@@ -33,6 +35,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% if best_model %}
         <p style="margin-top: 12px; font-size: 0.9rem; color: var(--text-muted);">
             Model tốt nhất: <strong>{{ best_model.name }}</strong> — Accuracy {{ best_model.accuracy|floatformat:2 }}, F1 {{ best_model.f1_macro|floatformat:4 }}
@@ -63,6 +66,7 @@
 <div class="card">
     <h3 style="margin-top: 0;">Model Versions (Production)</h3>
     {% if versions %}
+    <div class="table-wrap">
     <table>
         <thead>
             <tr>
@@ -83,12 +87,13 @@
                 <td>{{ v.model_type }}</td>
                 <td>
                     <span style="font-weight: 600; color: {% if v.status == 'ACTIVE' %}var(--secondary){% else %}var(--text-muted){% endif %};">
-                        {{ v.status }}
+                        {{ v.status|vi_customer_status }}
                     </span>
                 </td>
                 <td>{{ v.metric_name }}: {{ v.metric_value|floatformat:4 }}</td>
                 <td>{{ v.rollout_percentage }}%</td>
-                <td style="display: flex; gap: 6px;">
+                <td>
+                    <div class="cell-actions">
                     {% if v.status != 'ACTIVE' %}
                     <form method="POST" style="display: inline;">
                         {% csrf_token %}
@@ -103,11 +108,13 @@
                         <input type="hidden" name="model_version" value="{{ v.model_name }}_v{{ v.version }}">
                         <button type="submit" class="btn btn-danger" style="padding: 4px 8px; font-size: 0.8rem;">Rollback</button>
                     </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
     {% else %}
     <p style="color: var(--text-muted);">Chưa có model version trong registry. Chạy huấn luyện để tạo model mới.</p>
     {% endif %}

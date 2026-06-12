@@ -1,13 +1,14 @@
-import time
 import logging
-from django.core.management.base import BaseCommand
-from django.db import transaction
-from django.utils.timezone import now
-from payment.legacy_models import Payment, ShippingStatus
-from common.client import InternalClient
 import os
 
+from django.core.management.base import BaseCommand
+from django.db import transaction
+
+from common.client import InternalClient
+from payment.legacy_models import Payment, ShippingStatus
+
 logger = logging.getLogger(__name__)
+
 
 class Command(BaseCommand):
     help = "Retry failed shipping requests"
@@ -15,37 +16,51 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         client = InternalClient()
         ship_url = os.environ.get("SHIP_SERVICE_URL", "http://shipping-service:8000")
-        
+        order_url = os.environ.get("ORDER_SERVICE_URL", "http://order-service:8000")
+
         self.stdout.write(self.style.SUCCESS("Starting shipping retry worker..."))
-        
-        # We will loop infinitely in the bash script, but we can also just run it once per execution
+
         payments = Payment.objects.filter(
             shipping_status=ShippingStatus.FAILED,
-            shipping_retry_count__lt=5
-        ).order_by('shipping_retry_count', 'payment_date')
-        
+            shipping_retry_count__lt=5,
+        ).order_by("shipping_retry_count", "payment_date")
+
         for payment in payments:
-            # Backoff logic based on retry_count: e.g. if count=1, wait 1m, count=2 wait 5m.
-            # But since we run this as a cron, we'll just attempt it.
-            logger.info("metric_shipping_retry_attempt", extra={
-                "order_id": payment.order_id,
-                "retry_count": payment.shipping_retry_count + 1
-            })
-            
+            logger.info(
+                "metric_shipping_retry_attempt",
+                extra={
+                    "order_id": payment.order_id,
+                    "retry_count": payment.shipping_retry_count + 1,
+                },
+            )
+
             with transaction.atomic():
-                # Lock row
                 p = Payment.objects.select_for_update().get(id=payment.id)
                 p.shipping_retry_count += 1
                 p.save(update_fields=["shipping_retry_count"])
-                
+
+            payload = {"order_id": payment.order_id}
             try:
-                r = client.post(f"{ship_url}/internal/shipping/create/", json={"order_id": payment.order_id})
+                ctx_resp = client.get(
+                    f"{order_url}/orders/internal/{payment.order_id}/shipping-context/"
+                )
+                if ctx_resp.status_code == 200:
+                    context = ctx_resp.json()
+                    payload["shipping_method_id"] = context.get("shipping_method_id")
+                    payload["address"] = context.get("shipping_address_snapshot")
+            except Exception as e:
+                logger.warning(f"Could not fetch shipping context for order {payment.order_id}: {e}")
+
+            try:
+                r = client.post(f"{ship_url}/internal/shipping/create/", json=payload)
                 if r.status_code in (200, 201):
                     payment.shipping_status = ShippingStatus.PROCESSING
                     payment.shipping_failure_reason = ""
                     payment.save(update_fields=["shipping_status", "shipping_failure_reason"])
                     logger.info("metric_shipping_retry_success", extra={"order_id": payment.order_id})
-                    self.stdout.write(self.style.SUCCESS(f"Successfully recovered shipping for order {payment.order_id}"))
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Successfully recovered shipping for order {payment.order_id}")
+                    )
                 else:
                     raise Exception(f"Status {r.status_code}: {r.text}")
             except Exception as e:

@@ -35,6 +35,9 @@ class RecommenderRepository:
             .distinct()
         )
 
+    def has_behavior_history(self, customer_id: int) -> bool:
+        return BehaviorEvent.objects.filter(customer_id=customer_id).exists()
+
     def get_category_affinity(self, customer_id: int, catalog: dict[int, dict]) -> dict[int, float]:
         """Weighted category scores from user behavior events."""
         affinity: dict[int, float] = {}
@@ -52,6 +55,22 @@ class RecommenderRepository:
             cid = int(category_id)
             affinity[cid] = affinity.get(cid, 0.0) + weight
         return affinity
+
+    def get_global_popularity_scores(self, active_product_ids: set[int]) -> dict[int, float]:
+        """Normalized popularity from all users' behavior (cold-start baseline)."""
+        if not active_product_ids:
+            return {}
+
+        rows = (
+            BehaviorEvent.objects.filter(product_id__in=active_product_ids)
+            .values("product_id")
+            .annotate(total=Sum("action_weight"))
+        )
+        raw = {int(row["product_id"]): float(row["total"] or 0.0) for row in rows}
+        max_score = max(raw.values()) if raw else 0.0
+        if max_score <= 0:
+            return {pid: 0.0 for pid in active_product_ids}
+        return {pid: raw.get(pid, 0.0) / max_score for pid in active_product_ids}
 
     def get_cooccurrence_scores(
         self,

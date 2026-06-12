@@ -27,13 +27,20 @@ if [ -d /app/common ]; then
     pip install -q "protobuf>=3.20.3,<5.0.0" || true
 fi
 
+if [ -f /app/common/docker/mock-seed-common.sh ]; then
+    . /app/common/docker/mock-seed-common.sh
+fi
+
 if [ "$#" -eq 0 ]; then
-    python manage.py makemigrations app --no-input
+    python manage.py makemigrations app --noinput || true
     python manage.py migrate --no-input
-    python manage.py seed_mock || true
+
+    wait_for_product_catalog "${MOCK_PRODUCT_COUNT:-320}" || true
+    run_dependent_seed
     python manage.py sync_purchase_behaviors || true
     python manage.py sync_interaction_behaviors || true
     python manage.py ensure_recommender_models || true
+    python manage.py build_catalog_index || true
 
     echo "[entrypoint] Starting cron and adding django crontab..."
     service cron start
@@ -41,6 +48,9 @@ if [ "$#" -eq 0 ]; then
 
     exec python manage.py runserver 0.0.0.0:8000 --noreload
 else
+    if [ -n "$SKIP_MIGRATE" ]; then
+        . /app/common/docker/wait-for-tables.sh
+    fi
     echo "[entrypoint] Running command: $@"
     exec "$@"
 fi

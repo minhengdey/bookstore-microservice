@@ -43,6 +43,7 @@ class KTMPChatConsultingView(APIView):
             return Response({
                 "answer":       resp.get("answer", ""),
                 "products":     resp.get("products", []),
+                "intent":       resp.get("intent", ""),
                 "context_used": resp.get("context_used", ""),
             }, status=status.HTTP_200_OK)
         except Exception as e:

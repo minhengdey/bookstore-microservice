@@ -95,10 +95,16 @@ Sau khi các service đã chạy, có thể nạp dữ liệu mẫu cho tất c�
 
 Hoặc seed từng service: `docker compose exec user-service python manage.py seed_mock` (tương tự với `product-service`, `cart-service`, ...). Thứ tự nên theo: auth → user → product → cart → order → pay → ship → recommender-ai-service.
 
-**Tài khoản mẫu sau khi seed:**
-- Khách hàng: `customer1` / `password123` (customer2, customer3 tương tự)
-- Nhân viên: `staff1`, `staff2` / `password123`
-- Quản lý: `manager1` / `password123`
+**Tài khoản mẫu (tự tạo khi `docker compose up` qua `auth-service`):**
+
+| Role | Username | Password | Tab đăng nhập |
+|------|----------|----------|---------------|
+| Quản trị | `admin` | `Admin@12345` | Quản trị |
+| Khách hàng | `customer1`, `customer2`, `customer3` | `password123` | Khách hàng |
+| Nhân viên | `staff1`, `staff2` | `password123` | Nhân viên |
+| Quản lý | `manager1` | `password123` | Nhân viên |
+
+Ghi đè mật khẩu qua `.env`: `DEFAULT_ADMIN_PASSWORD`, `DEFAULT_CUSTOMER_PASSWORD`, `DEFAULT_STAFF_PASSWORD`.
 
 ---
 

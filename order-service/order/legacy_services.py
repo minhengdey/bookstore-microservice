@@ -1,7 +1,9 @@
 import logging
 from decimal import Decimal
 from django.db import transaction
+from rest_framework.exceptions import ValidationError
 from .legacy_models import LegacyOrder as Order, LegacyOrderItem as OrderItem, LegacyDiscount as Discount, LegacyOrderDiscount as OrderDiscount, LegacyInvoice as Invoice, OrderStatus
+from .validators import validate_create_order_payload
 from common.client import InternalClient
 
 logger = logging.getLogger(__name__)
@@ -25,28 +27,73 @@ class OrderService:
             raise ValueError(f"Order {order_id} not found")
         return order
 
+    def _apply_voucher(self, promotion_code: str, order_amount: Decimal) -> Decimal:
+        try:
+            r = self.client.post(
+                f"{PROMOTION_SERVICE_URL}/api/promotions/apply-voucher/",
+                json={"code": promotion_code, "order_amount": float(order_amount)},
+            )
+        except Exception as e:
+            logger.error(f"Failed to apply voucher via promotion-service: {e}")
+            raise ValueError("Không thể xác thực mã giảm giá. Vui lòng thử lại.")
+
+        if r.status_code != 200:
+            err = r.json().get("error", "Mã giảm giá không hợp lệ.")
+            raise ValueError(err)
+        return Decimal(str(r.json().get("discount_amount", 0)))
+
+    def _consume_voucher(self, promotion_code: str, order_id: int):
+        try:
+            r = self.client.post(
+                f"{PROMOTION_SERVICE_URL}/api/promotions/consume-voucher/",
+                json={"code": promotion_code, "order_id": order_id},
+            )
+            if r.status_code != 200:
+                logger.error(f"Failed to consume voucher {promotion_code}: {r.text}")
+        except Exception as e:
+            logger.error(f"Failed to consume voucher {promotion_code}: {e}")
+
+    def _consume_flash_sale_items(self, flash_sale_items: list):
+        if not flash_sale_items:
+            return
+        try:
+            r = self.client.post(
+                f"{PROMOTION_SERVICE_URL}/api/promotions/consume-flash-sale/",
+                json={"items": flash_sale_items},
+            )
+            if r.status_code != 200:
+                logger.error(f"Failed to consume flash sale items: {r.text}")
+        except Exception as e:
+            logger.error(f"Failed to consume flash sale items: {e}")
+
     def _create_order_db(self, data: dict):
         items_data = data.pop("items", [])
-        promotion_code = data.pop("promotion_code", None)
+        promotion_code = (data.pop("promotion_code", None) or "").strip().upper() or None
         discount_code = data.pop("discount_code", None)
         shipping_address = data.pop("shipping_address", None)
         address_id = data.pop("address_id", None)
         shipping_method_id = data.pop("shipping_method_id", None)
-        
+
+        flash_sale_items = [
+            {"product_id": int(item["product_id"]), "quantity": int(item["quantity"])}
+            for item in items_data
+            if Decimal(str(item.get("discount", 0))) > 0
+        ]
+
         if promotion_code:
             data["voucher_code"] = promotion_code
         if shipping_address:
             snapshot = dict(shipping_address) if isinstance(shipping_address, dict) else shipping_address
-            if shipping_method_id:
+            if shipping_method_id and "shipping_method_id" not in snapshot:
                 snapshot["shipping_method_id"] = shipping_method_id
             data["shipping_address_snapshot"] = snapshot
         elif shipping_method_id:
             data["shipping_address_snapshot"] = {"shipping_method_id": shipping_method_id}
         if address_id:
             data["address_id"] = address_id
-            
+
         order = Order.objects.create(status=OrderStatus.PENDING_PAYMENT, **data)
-        
+
         total = Decimal("0")
         for item in items_data:
             unit_price = Decimal(str(item.get("unit_price", 0)))
@@ -69,18 +116,10 @@ class OrderService:
                 discount=discount_val
             )
             total += unit_price * quantity
-            
+
         discount_amount = Decimal("0")
         if promotion_code:
-            try:
-                r = self.client.post(
-                    f"{PROMOTION_SERVICE_URL}/api/promotions/apply-voucher/",
-                    json={"code": promotion_code, "order_amount": float(total)},
-                )
-                if r.status_code == 200:
-                    discount_amount = Decimal(str(r.json().get("discount_amount", 0)))
-            except Exception as e:
-                logger.error(f"Failed to apply voucher via promotion-service: {e}")
+            discount_amount = self._apply_voucher(promotion_code, total)
         elif discount_code:
             discount = Discount.objects.filter(discount_code=discount_code, is_active=True).first()
             if discount:
@@ -89,20 +128,34 @@ class OrderService:
                 else:
                     discount_amount = discount.discount_value
                 OrderDiscount.objects.create(order=order, discount_id=discount.id, applied_value=discount_amount)
-                
+
         shipping_fee = Decimal(str(data.get("shipping_fee", 0)))
         final_total = total - discount_amount + shipping_fee
         order.total_amount = final_total
         order.discount_amount = discount_amount
         order.save(update_fields=["total_amount", "discount_amount"])
-        
+
+        if promotion_code:
+            self._consume_voucher(promotion_code, order.id)
+        if flash_sale_items:
+            self._consume_flash_sale_items(flash_sale_items)
+
         Invoice.objects.create(order=order, admin_id=order.admin_id)
         return order
 
     def create_order(self, data: dict):
+        try:
+            validate_create_order_payload(data)
+        except ValidationError as e:
+            detail = e.detail
+            if isinstance(detail, list):
+                raise ValueError(str(detail[0]))
+            if isinstance(detail, dict):
+                first = next(iter(detail.values()))
+                raise ValueError(str(first[0] if isinstance(first, list) else first))
+            raise ValueError(str(detail))
+
         items = [{"product_id": item["product_id"], "variant_id": item.get("variant_id"), "quantity": item["quantity"]} for item in data.get("items", [])]
-        if not items:
-            raise ValueError("Order must contain items")
             
         try:
             with transaction.atomic():
@@ -158,6 +211,25 @@ class OrderService:
                 logger.error(f"Failed to release stock: {r.text}")
         except Exception as e:
             logger.error(f"Failed to communicate with product-service for stock release: {e}")
+
+    def advance_to_processing(self, order_id):
+        order = self.get_order(order_id)
+        if order.status == OrderStatus.PROCESSING:
+            return order
+        if order.status != OrderStatus.PAID:
+            return order
+        return self.update_status(order_id, OrderStatus.PROCESSING)
+
+    def get_shipping_context(self, order_id):
+        order = self.get_order(order_id)
+        snapshot = order.shipping_address_snapshot or {}
+        shipping_method_id = snapshot.get("shipping_method_id") if isinstance(snapshot, dict) else None
+        return {
+            "order_id": order.id,
+            "shipping_method_id": shipping_method_id,
+            "shipping_fee": str(order.shipping_fee),
+            "shipping_address_snapshot": snapshot,
+        }
 
     def update_status(self, order_id, new_status):
         order = self.get_order(order_id)

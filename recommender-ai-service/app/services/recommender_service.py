@@ -1,6 +1,7 @@
 import logging
 import os
 import pickle
+import random
 from collections import Counter
 
 import requests
@@ -97,12 +98,19 @@ class RecommenderService:
 
     def recommend_with_prediction(self, customer_id: int, limit: int = 10) -> dict:
         prediction = self.predict_next_action(customer_id)
-        recommended_product_ids, strategy = self.recommend(
+        recommended_product_ids, strategy, score_map = self.recommend(
             customer_id, limit=limit, prediction=prediction
         )
         return {
             "customer_id": customer_id,
             "recommended_product_ids": recommended_product_ids,
+            "recommendation_scores": [
+                {
+                    "product_id": pid,
+                    "score": round(float(score_map.get(pid, 0.0)), 4),
+                }
+                for pid in recommended_product_ids
+            ],
             "next_action_prediction": prediction,
             "strategy": strategy,
         }
@@ -117,7 +125,10 @@ class RecommenderService:
         active_product_ids = set(catalog.keys())
         if not active_product_ids:
             logger.warning("product-service returned no active products; skip recommendation scoring")
-            return [], "empty-catalog"
+            return [], "empty-catalog", {}
+
+        return_all = limit is None or limit <= 0
+        cf_limit = len(active_product_ids) if return_all else max(limit * 5, 20)
 
         prediction = prediction if prediction is not None else self.predict_next_action(customer_id)
         prediction_action = (prediction or {}).get("action")
@@ -128,6 +139,17 @@ class RecommenderService:
         interacted = self.repo.get_interacted_product_ids(customer_id) & active_product_ids
         # Hide bought items only; browsed-but-not-bought can still be suggested (e.g. same category).
         exclude = purchased
+
+        if not self.repo.has_behavior_history(customer_id):
+            candidates = [pid for pid in active_product_ids if pid not in exclude]
+            rng = random.Random(customer_id)
+            rng.shuffle(candidates)
+            recommended = candidates if return_all else candidates[:limit]
+            final_scores = {pid: 0.0 for pid in recommended}
+            strategy = "random-cold-start"
+            self.repo.save_log(customer_id, recommended, strategy=strategy)
+            return recommended, strategy, final_scores
+
         purchase_categories = {
             int(catalog[pid]["category_id"])
             for pid in purchased
@@ -156,7 +178,7 @@ class RecommenderService:
 
         # 1) Matrix CF — primary signal for novel items
         cf_used = self._blend_matrix_cf(
-            customer_id, score_map, active_product_ids, exclude | purchased, limit, behavior_bias
+            customer_id, score_map, active_product_ids, exclude | purchased, cf_limit, behavior_bias
         )
         if cf_used:
             strategy_parts.append("cf")
@@ -208,37 +230,50 @@ class RecommenderService:
                 continue
             score_map[pid] *= 0.45
 
+        # 5) Global popularity — baseline so cold-start users still see ranked products
+        global_pop = self.repo.get_global_popularity_scores(active_product_ids)
+        if any(score > 0 for score in global_pop.values()):
+            strategy_parts.append("global-popularity")
+            global_weight = float(getattr(settings, "GLOBAL_POPULARITY_WEIGHT", 1.5))
+            for pid, norm in global_pop.items():
+                if pid in exclude:
+                    continue
+                score_map[pid] = score_map.get(pid, 0.0) + global_weight * norm
+
+        # 6) Item-factor popularity — strong catalog signal when the user is not in CF matrix
+        item_pop = self._get_item_cf_popularity(active_product_ids, exclude)
+        if item_pop:
+            strategy_parts.append("item-popularity")
+            item_weight = float(getattr(settings, "ITEM_CF_POPULARITY_WEIGHT", 1.0))
+            for pid, norm in item_pop.items():
+                if pid in exclude:
+                    continue
+                score_map[pid] = score_map.get(pid, 0.0) + item_weight * norm
+
         for blocked in exclude:
             score_map.pop(blocked, None)
 
-        recommended = [
-            pid
-            for pid, _ in sorted(score_map.items(), key=lambda item: item[1], reverse=True)
-            if pid not in exclude
-        ][:limit]
+        ranked = sorted(
+            (
+                (pid, score_map.get(pid, 0.0))
+                for pid in active_product_ids
+                if pid not in exclude
+            ),
+            key=lambda item: (-item[1], -item[0]),
+        )
+        recommended = [pid for pid, _ in ranked]
+        final_scores = {pid: score for pid, score in ranked}
 
-        if len(recommended) < limit:
-            strategy_parts.append("fallback")
-            needed = limit - len(recommended)
-            fallback = self._get_category_fallback(
-                catalog,
-                category_affinity,
-                exclude | set(recommended),
-                needed,
-                customer_id,
-            )
-            for pid in fallback:
-                if pid not in recommended:
-                    recommended.append(pid)
-                if len(recommended) >= limit:
-                    break
+        if not return_all:
+            recommended = recommended[:limit]
+            final_scores = {pid: final_scores[pid] for pid in recommended}
 
         if prediction_action:
             strategy_parts.append(f"next-action:{prediction_action}")
 
         strategy = "+".join(dict.fromkeys(strategy_parts))
-        self.repo.save_log(customer_id, recommended[:limit], strategy=strategy)
-        return recommended[:limit], strategy
+        self.repo.save_log(customer_id, recommended, strategy=strategy)
+        return recommended, strategy, final_scores
 
     @staticmethod
     def _behavior_bias(prediction_action: str | None, confidence: float) -> float:
@@ -249,13 +284,27 @@ class RecommenderService:
             bias -= min(confidence, 0.9) * 0.10
         return max(0.75, bias)
 
+    def _get_item_cf_popularity(
+        self,
+        active_product_ids: set[int],
+        exclude: set[int],
+    ) -> dict[int, float]:
+        try:
+            engine = get_implicit_engine()
+            if not engine.is_ready():
+                return {}
+            return engine.item_popularity_scores(active_product_ids, exclude)
+        except Exception as exc:
+            logger.warning("Item CF popularity skipped: %s", exc)
+            return {}
+
     def _blend_matrix_cf(
         self,
         customer_id: int,
         score_map: dict[int, float],
         active_product_ids: set[int],
         exclude: set[int],
-        limit: int,
+        cf_limit: int,
         behavior_bias: float,
     ) -> bool:
         try:
@@ -266,7 +315,7 @@ class RecommenderService:
             hits = engine.recommend(
                 customer_id,
                 exclude_product_ids=exclude,
-                limit=max(limit * 5, 20),
+                limit=max(cf_limit, 20),
             )
             if not hits:
                 return False

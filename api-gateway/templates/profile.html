@@ -1,28 +1,42 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div style="display: flex; gap: 24px;">
-    <!-- Sidebar -->
-    <div style="width: 250px; flex-shrink: 0;">
+{% if return_url %}
+<div class="card" style="margin-bottom: 20px; padding: 16px; background: var(--primary-light); border: 1px solid var(--primary);">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+            {% if from_checkout %}
+            <strong style="color: var(--primary);">Bạn đang thêm địa chỉ để hoàn tất đơn hàng</strong>
+            <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 0.95rem;">Sau khi lưu địa chỉ, hệ thống sẽ tự động quay lại trang xác nhận đơn hàng.</p>
+            {% else %}
+            <strong>Quay lại trang trước</strong>
+            {% endif %}
+        </div>
+        <a href="{{ return_url }}" class="btn btn-primary btn-sm">← Quay lại xác nhận đơn hàng</a>
+    </div>
+</div>
+{% endif %}
+
+<div class="profile-layout">
+    <div class="profile-sidebar">
         <div class="card" style="padding: 20px;">
             <div style="text-align: center; margin-bottom: 20px;">
-                <div style="width: 80px; height: 80px; background: var(--primary-light); color: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: bold; margin: 0 auto 12px;">
+                <div class="profile-avatar">
                     {{ profile.full_name|default:request.session.user.username|slice:":1"|upper }}
                 </div>
                 <h3 style="margin: 0;">{{ profile.full_name|default:request.session.user.username }}</h3>
-                <p style="color: var(--text-secondary); margin: 4px 0 0; font-size: 0.9rem;">{{ profile.phone }}</p>
+                <p style="color: var(--text-secondary); margin: 4px 0 0; font-size: 0.9rem;">{{ profile.phone|default:"—" }}</p>
             </div>
-            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
-                <li><a href="/profile/" style="display: block; padding: 10px; background: var(--primary-light); color: var(--primary); border-radius: 8px; text-decoration: none; font-weight: 600;">Hồ sơ & Địa chỉ</a></li>
-                <li><a href="/orders/" style="display: block; padding: 10px; color: var(--text-primary); text-decoration: none; border-radius: 8px;">Đơn hàng của tôi</a></li>
-                <li><a href="/wishlist/" style="display: block; padding: 10px; color: var(--text-primary); text-decoration: none; border-radius: 8px;">Danh sách yêu thích</a></li>
-                <li><a href="/logout/" style="display: block; padding: 10px; color: var(--danger); text-decoration: none; border-radius: 8px;">Đăng xuất</a></li>
+            <ul class="profile-nav" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px;">
+                <li><a href="{% if return_url %}/profile/?next={{ return_url|urlencode }}&from=checkout&action=add_address{% else %}/profile/{% endif %}" class="active">Hồ sơ & Địa chỉ</a></li>
+                <li><a href="/orders/">Đơn hàng của tôi</a></li>
+                <li><a href="/wishlist/">Danh sách yêu thích</a></li>
+                <li><a href="/logout/" class="logout-link">Đăng xuất</a></li>
             </ul>
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div style="flex: 1;">
+    <div class="profile-main">
         <div class="card">
             <h2>Hồ sơ của tôi</h2>
             <form style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -40,13 +54,14 @@
         <div class="card" style="margin-top: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">Sổ địa chỉ</h2>
-                <button onclick="document.getElementById('add-address-modal').style.display='flex'" class="btn btn-primary btn-sm">+ Thêm địa chỉ mới</button>
+                <button onclick="document.getElementById('add-address-modal').classList.add('open')" class="btn btn-primary btn-sm">+ Thêm địa chỉ mới</button>
             </div>
 
+            <div id="address-book-list">
             {% if addresses %}
                 <div style="display: flex; flex-direction: column; gap: 16px;">
                     {% for addr in addresses %}
-                    <div style="border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: flex-start; {% if addr.is_default %}border-color: var(--primary); background: var(--primary-light);{% endif %}">
+                    <div class="address-card" data-address-id="{{ addr.id }}" style="border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: flex-start; {% if addr.is_default %}border-color: var(--primary); background: var(--primary-light);{% endif %}">
                         <div>
                             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
                                 <strong style="font-size: 1.1rem;">{{ addr.recipient_name }}</strong>
@@ -60,13 +75,15 @@
                         </div>
                         <div style="display: flex; gap: 8px;">
                             {% if not addr.is_default %}
-                            <form method="POST" action="/addresses/{{ addr.id }}/default/" style="margin: 0;">
+                            <form method="POST" action="/addresses/{{ addr.id }}/default/{% if return_url %}?next={{ return_url|urlencode }}{% endif %}" style="margin: 0;">
                                 {% csrf_token %}
+                                {% if return_url %}<input type="hidden" name="next" value="{{ return_url }}">{% endif %}
                                 <button type="submit" class="btn btn-secondary btn-sm">Thiết lập mặc định</button>
                             </form>
                             {% endif %}
-                            <form method="POST" action="/addresses/{{ addr.id }}/delete/" style="margin: 0;" onsubmit="return confirm('Bạn có chắc chắn muốn xóa địa chỉ này?');">
+                            <form method="POST" action="/addresses/{{ addr.id }}/delete/{% if return_url %}?next={{ return_url|urlencode }}{% endif %}" style="margin: 0;" onsubmit="return confirm('Bạn có chắc chắn muốn xóa địa chỉ này?');">
                                 {% csrf_token %}
+                                {% if return_url %}<input type="hidden" name="next" value="{{ return_url }}">{% endif %}
                                 <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
                             </form>
                         </div>
@@ -74,43 +91,110 @@
                     {% endfor %}
                 </div>
             {% else %}
-                <div class="empty">Bạn chưa có địa chỉ nào. Hãy thêm địa chỉ để thuận tiện hơn khi thanh toán nhé!</div>
+                <div class="empty" id="address-empty-msg">Bạn chưa có địa chỉ nào. Hãy thêm địa chỉ để thuận tiện hơn khi thanh toán nhé!</div>
             {% endif %}
+            </div>
         </div>
     </div>
 </div>
 
 <!-- Add Address Modal -->
-<div id="add-address-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;">
+<div id="add-address-modal" class="modal-overlay">
     <div class="card" style="width: 500px; max-width: 90vw; max-height: 90vh; overflow-y: auto;">
         <h3 style="margin-top: 0;">Thêm địa chỉ mới</h3>
         <form method="POST" action="/addresses/add/">
             {% csrf_token %}
+            {% if return_url %}<input type="hidden" name="next" value="{{ return_url }}">{% endif %}
             <div style="margin-bottom: 12px;">
-                <label>Họ và tên người nhận</label>
+                <label>Họ và tên người nhận *</label>
                 <input type="text" name="recipient_name" required>
             </div>
             <div style="margin-bottom: 12px;">
-                <label>Số điện thoại</label>
+                <label>Số điện thoại *</label>
                 <input type="text" name="phone" required>
             </div>
             <div style="margin-bottom: 12px;">
-                <label>Tỉnh/Thành phố</label>
+                <label>Tỉnh/Thành phố *</label>
                 <input type="text" name="city" required>
             </div>
             <div style="margin-bottom: 12px;">
-                <label>Địa chỉ chi tiết (Số nhà, đường...)</label>
+                <label>Địa chỉ chi tiết (Số nhà, đường...) *</label>
                 <input type="text" name="address_line" required>
             </div>
             <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" name="is_default" id="is_default" style="width: auto;">
+                <input type="checkbox" name="is_default" id="is_default" style="width: auto;" checked>
                 <label for="is_default" style="margin: 0; cursor: pointer;">Đặt làm địa chỉ mặc định</label>
             </div>
             <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-address-modal').style.display='none'">Hủy</button>
-                <button type="submit" class="btn btn-primary">Lưu địa chỉ</button>
+                {% if return_url %}
+                <a href="{{ return_url }}" class="btn btn-secondary">Quay lại đặt hàng</a>
+                {% else %}
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('add-address-modal').classList.remove('open')">Hủy</button>
+                {% endif %}
+                <button type="submit" class="btn btn-primary">Lưu và tiếp tục</button>
             </div>
         </form>
     </div>
 </div>
+
+{{ addresses|json_script:"profile-addresses-data" }}
+<script>
+(function() {
+    {% if auto_add_address %}
+    document.getElementById('add-address-modal').classList.add('open');
+    {% endif %}
+
+    function renderAddressBook(addresses) {
+        const list = document.getElementById('address-book-list');
+        if (!addresses.length) {
+            list.innerHTML = '<div class="empty" id="address-empty-msg">Bạn chưa có địa chỉ nào. Hãy thêm địa chỉ để thuận tiện hơn khi thanh toán nhé!</div>';
+            return;
+        }
+        const nextField = {% if return_url %}'<input type="hidden" name="next" value="{{ return_url|escapejs }}">'{% else %}''{% endif %};
+        const nextQuery = {% if return_url %}'?next={{ return_url|urlencode }}'{% else %}''{% endif %};
+        let html = '<div style="display:flex;flex-direction:column;gap:16px;">';
+        addresses.forEach(function(addr) {
+            const defaultStyle = addr.is_default ? 'border-color:var(--primary);background:var(--primary-light);' : '';
+            const defaultBadge = addr.is_default ? '<span style="background:var(--primary);color:white;padding:2px 8px;border-radius:12px;font-size:0.8rem;">Mặc định</span>' : '';
+            const state = addr.state ? ', ' + addr.state : '';
+            const defaultBtn = addr.is_default ? '' :
+                '<form method="POST" action="/addresses/' + addr.id + '/default/' + nextQuery + '" style="margin:0;">' +
+                '<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">' + nextField +
+                '<button type="submit" class="btn btn-secondary btn-sm">Thiết lập mặc định</button></form>';
+            html += '<div class="address-card" data-address-id="' + addr.id + '" style="border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:flex-start;' + defaultStyle + '">' +
+                '<div><div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">' +
+                '<strong style="font-size:1.1rem;">' + addr.recipient_name + '</strong>' +
+                '<span style="color:var(--text-secondary);">| ' + addr.phone + '</span>' + defaultBadge +
+                '</div><p style="margin:0 0 4px;color:var(--text-secondary);">' + addr.address_line + '</p>' +
+                '<p style="margin:0;color:var(--text-secondary);">' + addr.city + state + '</p></div>' +
+                '<div style="display:flex;gap:8px;">' + defaultBtn +
+                '<form method="POST" action="/addresses/' + addr.id + '/delete/' + nextQuery + '" style="margin:0;" onsubmit="return confirm(\'Bạn có chắc chắn muốn xóa địa chỉ này?\');">' +
+                '<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">' + nextField +
+                '<button type="submit" class="btn btn-danger btn-sm">Xóa</button></form></div></div>';
+        });
+        html += '</div>';
+        list.innerHTML = html;
+    }
+
+    let lastHash = '';
+    function pollAddresses() {
+        fetch('/addresses/api/', { credentials: 'same-origin', cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                const hash = JSON.stringify(data.addresses || []);
+                if (hash !== lastHash) {
+                    lastHash = hash;
+                    renderAddressBook(data.addresses || []);
+                }
+            })
+            .catch(function(err) { console.error('Address poll error:', err); });
+    }
+
+    lastHash = JSON.stringify(JSON.parse(document.getElementById('profile-addresses-data').textContent || '[]'));
+    setInterval(pollAddresses, 3000);
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) pollAddresses();
+    });
+})();
+</script>
 {% endblock %}

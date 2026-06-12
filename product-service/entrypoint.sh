@@ -1,6 +1,5 @@
 #!/bin/sh
 
-# Chờ database (nếu cần, nhưng ở đây kết nối trực tiếp host nên thường OK ngay)
 echo "Waiting for database..."
 sleep 2
 
@@ -9,10 +8,16 @@ if [ -d /app/common ]; then
     pip install -q -e /app/common || true
 fi
 
+if [ -f /app/common/docker/mock-seed-common.sh ]; then
+    . /app/common/docker/mock-seed-common.sh
+fi
+
 echo "Applying migrations..."
 python manage.py makemigrations product --noinput
 python manage.py migrate --noinput
-python manage.py seed_mock || true
+
+run_product_seed
+sync_product_flash_sales || true
 
 if [ $# -eq 0 ]; then
   echo "Starting server..."

@@ -8,7 +8,8 @@ _svc = RecommenderService()
 class RecommendationView(APIView):
     """GET /recommendations/<customer_id>/?limit=10"""
     def get(self, request, customer_id):
-        limit = int(request.query_params.get("limit", 10))
+        raw_limit = request.query_params.get("limit", "10")
+        limit = 0 if str(raw_limit).strip() in {"", "0", "all"} else int(raw_limit)
         payload = _svc.recommend_with_prediction(customer_id, limit=limit)
         return Response(payload)
 
@@ -22,7 +23,8 @@ class RecommendAliasView(APIView):
             customer_id = int(user_id)
         except ValueError:
             return Response({"error": "user_id must be an integer"}, status=400)
-        limit = int(request.query_params.get("limit", 10))
+        raw_limit = request.query_params.get("limit", "10")
+        limit = 0 if str(raw_limit).strip() in {"", "0", "all"} else int(raw_limit)
         payload = _svc.recommend_with_prediction(customer_id, limit=limit)
         return Response(payload)
 

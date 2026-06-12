@@ -3,6 +3,7 @@
 {% block content %}
 <h1 class="page-title">📦 Xác nhận đơn hàng</h1>
 
+{% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
 {% if error %}<div class="alert-error">{{ error }}</div>{% endif %}
 
 <div class="card">
@@ -12,7 +13,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>#</th>
+                    <th>STT</th>
                     <th>Sản phẩm</th>
                     <th>Số lượng</th>
                     <th>Đơn giá</th>
@@ -22,10 +23,20 @@
             <tbody>
             {% for item in cart_items %}
             <tr>
-                <td><span class="badge">{{ item.id }}</span></td>
-                <td>{{ item.product_name }}</td>
+                <td>{{ forloop.counter }}</td>
+                <td>
+                    {{ item.product_name }}
+                    {% if item.flash_sale %}
+                    <span class="badge badge-warning" style="margin-left:6px;">⚡ Flash Sale</span>
+                    {% endif %}
+                </td>
                 <td>{{ item.quantity }}</td>
-                <td>{{ item.unit_price|vnd }}</td>
+                <td>
+                    {% if item.flash_sale and item.original_price %}
+                    <span style="text-decoration:line-through;color:var(--text-secondary);font-size:0.85rem;">{{ item.original_price|vnd }}</span><br>
+                    {% endif %}
+                    {{ item.unit_price|vnd }}
+                </td>
                 <td>{{ item.quantity }} × {{ item.unit_price|vnd }}</td>
             </tr>
             {% endfor %}
@@ -38,8 +49,9 @@
         <div style="margin: 20px 0; display: grid; gap: 20px;">
             <div>
                 <h3 style="margin-bottom: 12px; color: var(--text-primary);">Địa chỉ giao hàng *</h3>
-                {% if addresses %}
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div id="address-list-container">
+                    {% if addresses %}
+                    <div id="address-options" style="display: flex; flex-direction: column; gap: 10px;">
                     {% for addr in addresses %}
                         <label class="address-option" data-city="{{ addr.city }}" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; {% if addr.is_default %}border-color: var(--primary); background: var(--primary-light);{% endif %}">
                             <input type="radio" name="address_id" value="{{ addr.id }}" required {% if addr.is_default %}checked{% endif %} style="margin-top: 4px;">
@@ -50,9 +62,15 @@
                         </label>
                     {% endfor %}
                     </div>
-                {% else %}
-                    <div class="alert-warning" style="margin-bottom: 20px; padding: 12px; background: #fff3cd; color: #856404; border-radius: 8px;">Bạn chưa có địa chỉ nào. <a href="/profile/" style="text-decoration: underline; font-weight: bold;">Thêm địa chỉ mới</a>.</div>
-                {% endif %}
+                    {% else %}
+                    <div id="address-empty-notice" class="alert-warning" style="margin-bottom: 12px; padding: 12px; background: #fff3cd; color: #856404; border-radius: 8px;">
+                        Bạn chưa có địa chỉ nào. Hãy thêm địa chỉ để tiếp tục đặt hàng.
+                    </div>
+                    {% endif %}
+                </div>
+                <div style="margin-top: 12px;">
+                    <a href="{{ profile_add_address_url }}" class="btn btn-secondary btn-sm">+ Thêm địa chỉ mới</a>
+                </div>
             </div>
 
             <div>
@@ -72,7 +90,11 @@
 
             <div>
                 <h3 style="margin-bottom: 12px; color: var(--text-primary);">Mã giảm giá (Voucher)</h3>
-                <input type="text" name="promotion_code" placeholder="Nhập mã giảm giá..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius);">
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" name="promotion_code" id="promotion-code" placeholder="Nhập mã giảm giá (VD: WELCOME10)..." style="flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius);">
+                    <button type="button" id="apply-voucher-btn" class="btn btn-secondary">Áp dụng</button>
+                </div>
+                <p id="voucher-message" style="font-size: 0.85rem; margin-top: 8px; display: none;"></p>
             </div>
 
             <div>
@@ -90,6 +112,10 @@
                 <span>Phí vận chuyển:</span>
                 <span id="shipping-fee-display">—</span>
             </div>
+            <div id="discount-row" style="display: none; justify-content: space-between; margin-bottom: 8px; color: #059669;">
+                <span>Giảm giá (voucher):</span>
+                <span id="discount-display">—</span>
+            </div>
             <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--border); padding-top: 8px;">
                 <span>Tổng thanh toán (ước tính):</span>
                 <span id="total-display" style="color: var(--primary);">{{ subtotal|vnd }}</span>
@@ -98,7 +124,7 @@
 
         <div class="page-actions">
             <a href="/cart/{{ customer_id }}/" class="btn btn-secondary">← Quay lại giỏ hàng</a>
-            <button type="submit" class="btn btn-primary">Tạo đơn hàng và chuyển thanh toán</button>
+            <button type="submit" class="btn btn-primary" id="checkout-submit" {% if not addresses %}disabled{% endif %}>Tạo đơn hàng và chuyển thanh toán</button>
         </div>
     </form>
     {% else %}
@@ -108,12 +134,24 @@
 </div>
 
 {% if cart_items %}
+{{ addresses|json_script:"initial-addresses-data" }}
 <script>
 (function() {
     const subtotal = {{ subtotal|default:0 }};
+    const customerId = {{ customer_id }};
     const methodSelect = document.getElementById('shipping-method');
     const feeDisplay = document.getElementById('shipping-fee-display');
     const totalDisplay = document.getElementById('total-display');
+    const discountRow = document.getElementById('discount-row');
+    const discountDisplay = document.getElementById('discount-display');
+    const voucherInput = document.getElementById('promotion-code');
+    const applyVoucherBtn = document.getElementById('apply-voucher-btn');
+    const voucherMessage = document.getElementById('voucher-message');
+    const submitBtn = document.getElementById('checkout-submit');
+    let appliedDiscount = 0;
+    const addressContainer = document.getElementById('address-list-container');
+    const initialAddresses = JSON.parse(document.getElementById('initial-addresses-data').textContent || '[]');
+    let lastAddressHash = '';
 
     function formatVnd(n) {
         return Math.round(n).toLocaleString('vi-VN') + '₫';
@@ -123,11 +161,171 @@
         const opt = methodSelect.options[methodSelect.selectedIndex];
         const fee = opt && opt.dataset.fee ? parseFloat(opt.dataset.fee) : 0;
         feeDisplay.textContent = fee ? formatVnd(fee) : '—';
-        totalDisplay.textContent = formatVnd(subtotal + fee);
+        if (appliedDiscount > 0) {
+            discountRow.style.display = 'flex';
+            discountDisplay.textContent = '-' + formatVnd(appliedDiscount);
+        } else {
+            discountRow.style.display = 'none';
+        }
+        totalDisplay.textContent = formatVnd(Math.max(0, subtotal - appliedDiscount + fee));
+    }
+
+    function applyVoucher() {
+        const code = (voucherInput.value || '').trim();
+        if (!code) {
+            voucherMessage.style.display = 'block';
+            voucherMessage.style.color = '#b45309';
+            voucherMessage.textContent = 'Vui lòng nhập mã giảm giá.';
+            appliedDiscount = 0;
+            updateTotal();
+            return;
+        }
+        applyVoucherBtn.disabled = true;
+        applyVoucherBtn.textContent = 'Đang kiểm tra...';
+        fetch('/cart/' + customerId + '/checkout/apply-voucher/?code=' + encodeURIComponent(code), {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        })
+            .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
+            .then(function(result) {
+                voucherMessage.style.display = 'block';
+                if (result.ok) {
+                    appliedDiscount = result.data.discount_amount || 0;
+                    voucherMessage.style.color = '#059669';
+                    voucherMessage.textContent = 'Đã áp dụng mã ' + (result.data.code || code) + ' — giảm ' + formatVnd(appliedDiscount);
+                } else {
+                    appliedDiscount = 0;
+                    voucherMessage.style.color = '#dc2626';
+                    voucherMessage.textContent = result.data.error || 'Mã giảm giá không hợp lệ.';
+                }
+                updateTotal();
+            })
+            .catch(function() {
+                appliedDiscount = 0;
+                voucherMessage.style.display = 'block';
+                voucherMessage.style.color = '#dc2626';
+                voucherMessage.textContent = 'Không thể kiểm tra mã giảm giá. Vui lòng thử lại.';
+                updateTotal();
+            })
+            .finally(function() {
+                applyVoucherBtn.disabled = false;
+                applyVoucherBtn.textContent = 'Áp dụng';
+            });
+    }
+
+    function addressHash(addresses) {
+        return JSON.stringify(addresses.map(a => [a.id, a.is_default, a.recipient_name, a.phone, a.address_line, a.city]));
+    }
+
+    function renderAddresses(addresses) {
+        if (!addresses.length) {
+            addressContainer.innerHTML = '<div id="address-empty-notice" class="alert-warning" style="margin-bottom:12px;padding:12px;background:#fff3cd;color:#856404;border-radius:8px;">Bạn chưa có địa chỉ nào. Hãy thêm địa chỉ để tiếp tục đặt hàng.</div>';
+            submitBtn.disabled = true;
+            return;
+        }
+
+        const html = ['<div id="address-options" style="display:flex;flex-direction:column;gap:10px;">'];
+        addresses.forEach(function(addr) {
+            const checked = addr.is_default ? 'checked' : '';
+            const style = addr.is_default ? 'border-color:var(--primary);background:var(--primary-light);' : '';
+            const state = addr.state ? ', ' + addr.state : '';
+            html.push(
+                '<label class="address-option" data-city="' + (addr.city || '') + '" style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;' + style + '">' +
+                '<input type="radio" name="address_id" value="' + addr.id + '" required ' + checked + ' style="margin-top:4px;">' +
+                '<div><strong>' + addr.recipient_name + ' - ' + addr.phone + '</strong>' +
+                '<p style="margin:4px 0 0;color:var(--text-secondary);font-size:0.9rem;">' + addr.address_line + ', ' + addr.city + state + '</p></div></label>'
+            );
+        });
+        html.push('</div>');
+        addressContainer.innerHTML = html.join('');
+        submitBtn.disabled = false;
+        bindAddressChange();
+        refreshShippingFees(getSelectedCity());
+    }
+
+    function getSelectedCity() {
+        const checked = document.querySelector('input[name="address_id"]:checked');
+        if (!checked) return '';
+        const label = checked.closest('.address-option');
+        return label ? (label.dataset.city || '') : '';
+    }
+
+    function refreshShippingFees(city) {
+        const url = '/cart/' + customerId + '/checkout/shipping-fees/?city=' + encodeURIComponent(city || '');
+        fetch(url, { credentials: 'same-origin', cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                const selected = methodSelect.value;
+                methodSelect.innerHTML = '<option value="">-- Chọn phương thức giao hàng --</option>';
+                (data.methods || []).forEach(function(m) {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.dataset.fee = m.calculated_fee != null ? m.calculated_fee : (m.rate || 0);
+                    const fee = m.calculated_fee != null ? m.calculated_fee : (m.rate || 0);
+                    opt.textContent = m.method_name + ' — ' + formatVnd(fee);
+                    if (String(m.id) === String(selected)) opt.selected = true;
+                    methodSelect.appendChild(opt);
+                });
+                updateTotal();
+            })
+            .catch(function(err) { console.error('Shipping fee refresh error:', err); });
+    }
+
+    function bindAddressChange() {
+        document.querySelectorAll('input[name="address_id"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                refreshShippingFees(getSelectedCity());
+            });
+        });
+    }
+
+    function pollAddresses() {
+        fetch('/addresses/api/', { credentials: 'same-origin', cache: 'no-store' })
+            .then(res => res.json())
+            .then(data => {
+                const addresses = data.addresses || [];
+                const hash = addressHash(addresses);
+                if (hash !== lastAddressHash) {
+                    lastAddressHash = hash;
+                    renderAddresses(addresses);
+                }
+            })
+            .catch(function(err) { console.error('Address poll error:', err); });
     }
 
     methodSelect.addEventListener('change', updateTotal);
+    applyVoucherBtn.addEventListener('click', applyVoucher);
+    voucherInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            applyVoucher();
+        }
+    });
+    bindAddressChange();
     updateTotal();
+    lastAddressHash = addressHash(initialAddresses);
+
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) pollAddresses();
+    });
+    setInterval(pollAddresses, 3000);
+    pollAddresses();
+
+    const form = document.getElementById('checkout-form');
+    form.addEventListener('submit', function(e) {
+        const addressChecked = form.querySelector('input[name="address_id"]:checked');
+        const methodVal = methodSelect.value;
+        if (!addressChecked) {
+            e.preventDefault();
+            alert('Vui lòng chọn địa chỉ giao hàng.');
+            return;
+        }
+        if (!methodVal) {
+            e.preventDefault();
+            alert('Vui lòng chọn phương thức vận chuyển.');
+            return;
+        }
+    });
 })();
 </script>
 {% endif %}

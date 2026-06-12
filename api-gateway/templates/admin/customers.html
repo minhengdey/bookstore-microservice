@@ -1,11 +1,11 @@
 {% extends "admin_base.html" %}
+{% load custom_filters %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-    <h1 style="margin: 0; font-size: 1.8rem;">Quản lý Khách hàng</h1>
-</div>
+<h1 class="page-heading">Quản lý Khách hàng</h1>
 
 <div class="card">
+    <div class="table-wrap">
     <table>
         <thead>
             <tr>
@@ -25,11 +25,9 @@
                 <td>{{ customer.phone|default:'-' }}</td>
                 <td>{{ customer.loyalty_points|default:0 }}</td>
                 <td>
-                    {% if customer.status == 'ACTIVE' %}
-                    <span style="color: var(--secondary); font-weight: 600;">Hoạt động</span>
-                    {% else %}
-                    <span style="color: var(--danger); font-weight: 600;">{{ customer.status }}</span>
-                    {% endif %}
+                    <span class="badge {% if customer.status == 'ACTIVE' %}badge-success{% else %}badge-danger{% endif %}">
+                        {{ customer.status|vi_customer_status }}
+                    </span>
                 </td>
                 <td>
                     <a href="/admin/customers/{{ customer.id }}/" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.9rem;">Xem chi tiết</a>
@@ -42,5 +40,6 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 </div>
 {% endblock %}

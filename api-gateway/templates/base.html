@@ -9,67 +9,104 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=20260506">
+    <link rel="stylesheet" href="/static/styles.css?v=20260612f">
 </head>
 
 <body>
     <header>
-        <h1><span>🛍️</span> E-Commerce</h1>
-        <nav>
-            <a href="/">Trang chủ</a>
-            <a href="/products/">Sản phẩm</a>
-            <a href="/promotions/">Khuyến mãi</a>
-            {% if request.session.user %}
-            {% if 'CUSTOMER' in request.session.user.roles and 'STAFF' not in request.session.user.roles and 'ADMIN' not in request.session.user.roles %}
-            <a href="/wishlist/">Yêu thích</a>
-            <a href="/profile/">Hồ sơ</a>
-            <a href="/cart/{{ request.session.user.entity_id }}/">Giỏ hàng</a>
-            <a href="/recommendations/">Đề xuất AI</a>
-            <a href="/orders/">Đơn hàng</a>
-            <a href="/returns/">Trả hàng</a>
-            <a href="/support/">Hỗ trợ</a>
-            {% else %}
-            <a href="/catalog/">Danh mục</a>
-            <a href="/orders/">Đơn hàng</a>
-            <a href="/staff/dashboard/">Staff Portal</a>
-            {% if 'ADMIN' in request.session.user.roles or 'MANAGER' in request.session.user.roles %}
-            <a href="/admin/dashboard/">Admin Portal</a>
-            {% endif %}
-            {% endif %}
-            {% endif %}
-        </nav>
-        <div class="header-actions">
-            {% if request.session.user %}
-            <span class="user-badge">
-                👤 {{ request.session.user.username }}
-                <span class="role-pill">
-                    {% if 'STAFF' in request.session.user.roles %}Nhân viên{% elif 'ADMIN' in request.session.user.roles or 'MANAGER' in request.session.user.roles %}Quản trị{% else %}Khách hàng{% endif %}
+        <div class="header-inner">
+            <h1><span>🛍️</span> E-Commerce</h1>
+            <nav>
+                <a href="/">Trang chủ</a>
+                {% if request.session.user %}
+                <a href="/products/">Sản phẩm</a>
+                <a href="/promotions/">Khuyến mãi</a>
+                {% if 'CUSTOMER' in request.session.user.roles and 'STAFF' not in request.session.user.roles and 'ADMIN' not in request.session.user.roles %}
+                <a href="/wishlist/">Yêu thích</a>
+                <a href="/cart/{{ request.session.user.entity_id }}/">Giỏ hàng</a>
+                <a href="/orders/">Đơn hàng</a>
+                <a href="/returns/">Trả hàng</a>
+                <a href="/support/">Hỗ trợ</a>
+                {% else %}
+                <a href="/catalog/">Danh mục</a>
+                <a href="/orders/">Đơn hàng</a>
+                <a href="/staff/dashboard/">Staff Portal</a>
+                {% if 'ADMIN' in request.session.user.roles or 'MANAGER' in request.session.user.roles %}
+                <a href="/admin/dashboard/">Admin Portal</a>
+                {% endif %}
+                {% endif %}
+                {% endif %}
+            </nav>
+            <div class="header-actions">
+                {% if request.session.user %}
+                {% if 'CUSTOMER' in request.session.user.roles and 'STAFF' not in request.session.user.roles and 'ADMIN' not in request.session.user.roles %}
+                <a href="/profile/" class="user-badge" title="Hồ sơ của tôi">
+                    👤 {{ request.session.user.username }}
+                    <span class="role-pill">Khách hàng</span>
+                </a>
+                {% else %}
+                <span class="user-badge">
+                    👤 {{ request.session.user.username }}
+                    <span class="role-pill">
+                        {% if 'STAFF' in request.session.user.roles %}Nhân viên{% elif 'ADMIN' in request.session.user.roles or 'MANAGER' in request.session.user.roles %}Quản trị{% else %}Khách hàng{% endif %}
+                    </span>
                 </span>
-            </span>
-            <a href="/logout/" class="btn-logout">Đăng xuất</a>
-            {% else %}
-            <a href="/login/" class="btn-login">Đăng nhập</a>
-            <a href="/register/" class="btn-register">Đăng ký</a>
-            {% endif %}
+                {% endif %}
+                <a href="/logout/" class="btn-logout">Đăng xuất</a>
+                {% else %}
+                <a href="/login/" class="btn-login">Đăng nhập</a>
+                <a href="/register/" class="btn-register">Đăng ký</a>
+                {% endif %}
+            </div>
         </div>
     </header>
-    <div class="container">{% block content %}{% endblock %}</div>
+    <main class="container">{% block content %}{% endblock %}</main>
+
+    <footer class="site-footer">
+        <div class="site-footer-inner">
+            <div>
+                <h4>🛍️ E-Commerce</h4>
+                <p style="font-size:0.9rem;line-height:1.6;">Mua sắm trực tuyến tiện lợi, giao hàng nhanh chóng, nhiều khuyến mãi hấp dẫn.</p>
+            </div>
+            {% if request.session.user %}
+            <div>
+                <h4>Mua sắm</h4>
+                <a href="/products/">Sản phẩm</a>
+                <a href="/promotions/">Khuyến mãi</a>
+            </div>
+            <div>
+                <h4>Hỗ trợ</h4>
+                <a href="/support/">Trung tâm hỗ trợ</a>
+                <a href="/returns/">Chính sách trả hàng</a>
+                <a href="/orders/">Theo dõi đơn hàng</a>
+            </div>
+            {% else %}
+            <div>
+                <h4>Bắt đầu</h4>
+                <a href="/login/">Đăng nhập</a>
+                <a href="/register/">Đăng ký tài khoản</a>
+            </div>
+            {% endif %}
+        </div>
+        <div class="site-footer-bottom">
+            © 2026 E-Commerce. Tất cả quyền được bảo lưu.
+        </div>
+    </footer>
 
     <!-- Tích hợp AI Trợ lý Tư Vấn -->
     {% if request.session.user %}
     {% with uid=request.session.user.entity_id|default:"null" %}
     <script>
-        // Gọi ID thật của user đang đăng nhập để cá nhân hóa kết quả AI
         window.BookAI_Profile = {
             user_id: {{ uid }},
-        age: 25,
+            age: 25,
             gender: "male",
-                location_id: 1
+            location_id: 1
         };
     </script>
     {% endwith %}
     {% endif %}
-    <script src="/static/chatbot-widget.js?v=20260406"></script>
+    <script src="/static/chatbot-widget.js?v=20260408"></script>
 
 </body>
 

@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 class Category(models.Model):
     name = models.CharField(max_length=255)
@@ -32,6 +33,11 @@ class Product(models.Model):
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20, default="active")
     stock = models.IntegerField(default=0)
+    is_flash_sale = models.BooleanField(default=False)
+    flash_sale_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    flash_sale_name = models.CharField(max_length=255, blank=True, default="")
+    flash_sale_ends_at = models.DateTimeField(null=True, blank=True)
+    flash_sale_id = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -40,6 +46,30 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+    def refresh_flash_sale_state(self, save=True):
+        if not self.is_flash_sale:
+            return False
+        if self.flash_sale_ends_at and self.flash_sale_ends_at <= timezone.now():
+            self.is_flash_sale = False
+            self.flash_sale_price = None
+            self.flash_sale_name = ""
+            self.flash_sale_ends_at = None
+            self.flash_sale_id = None
+            if save:
+                self.save(update_fields=[
+                    "is_flash_sale", "flash_sale_price", "flash_sale_name",
+                    "flash_sale_ends_at", "flash_sale_id", "updated_at",
+                ])
+            return True
+        return False
+
+    @property
+    def effective_price(self):
+        self.refresh_flash_sale_state(save=True)
+        if self.is_flash_sale and self.flash_sale_price is not None:
+            return self.flash_sale_price
+        return self.price
 
 class ProductVariant(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="variants")

@@ -453,6 +453,10 @@ class AuthService:
             "role_version": role_version,
             "entity_id": str(profile.get("entity_id")) if profile and profile.get("entity_id") else str(user.id),
         }
+        if profile:
+            full_name = (profile.get("full_name") or "").strip()
+            if full_name:
+                payload["full_name"] = full_name
         return payload
 
     def _audit(

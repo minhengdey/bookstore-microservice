@@ -1,0 +1,39 @@
+{% load custom_filters %}
+<link rel="stylesheet" href="/static/support-chat.css?v=20260612">
+<div class="support-chat-wrap" data-support-chat
+     data-api-url="{{ chat_api_url }}"
+     data-csrf-token="{{ csrf_token }}"
+     data-viewer-role="{{ viewer_role }}"
+     data-customer-label="{{ customer_label|default:'Khách hàng'|escape }}">
+    <div class="support-chat-header">
+        <div class="support-chat-header-main">
+            <h3>{{ ticket.subject }}</h3>
+            <div class="support-chat-header-meta">
+                <span class="badge {{ ticket.status|ticket_status_badge }}" data-chat-status-badge>{{ ticket.status|vi_ticket_status }}</span>
+                {% if ticket.order_id %}
+                <span>Đơn #{{ ticket.order_id }}</span>
+                {% endif %}
+                <span class="support-chat-live" data-chat-live>
+                    <span class="support-chat-live-dot"></span>
+                    <span data-live-text>Đang kết nối</span>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="support-chat-messages" data-chat-messages aria-live="polite"></div>
+
+    {% if ticket.status != 'CLOSED' %}
+    <div class="support-chat-composer" data-chat-composer>
+        <textarea class="support-chat-input" data-chat-input rows="1"
+                  placeholder="{% if viewer_role == 'staff' %}Nhập phản hồi cho khách hàng...{% else %}Nhập tin nhắn...{% endif %}"
+                  aria-label="Tin nhắn"></textarea>
+        <button type="button" class="support-chat-send" data-chat-send title="Gửi (Enter)" aria-label="Gửi tin nhắn">➤</button>
+    </div>
+    {% else %}
+    <div class="support-chat-closed-note" data-chat-closed-note>Ticket đã đóng — không thể gửi thêm tin nhắn.</div>
+    {% endif %}
+</div>
+{{ ticket.content|json_script:"ticket-initial-content" }}
+{{ ticket.created_at|default:""|json_script:"ticket-initial-created-at" }}
+<script src="/static/support-chat.js?v=20260612b"></script>

@@ -4,23 +4,61 @@
 {% block content %}
 <h1 class="page-title">Chi tiết đơn hàng #{{ order.id }}</h1>
 
-<div class="card" style="max-width:800px; margin:0 auto; padding:24px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; border-bottom:1px solid var(--border); padding-bottom:16px;">
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; border-bottom:1px solid var(--border); padding-bottom:16px; flex-wrap:wrap; gap:16px;">
         <div>
-            <p style="margin:0; font-size:1.1rem; color:var(--text-secondary);">
+            <p style="margin:0; font-size:1.05rem; color:var(--text-secondary);">
                 Ngày đặt: <strong style="color:var(--text-primary);">{{ order.order_date_fmt }}</strong>
             </p>
+            <p style="margin:6px 0 0; font-size:1.05rem; color:var(--text-secondary);">
+                Mã đơn: <strong style="color:var(--text-primary);">#{{ order.id }}</strong>
+            </p>
             {% if order.customer_name %}
-            <p style="margin:4px 0 0 0; font-size:1.1rem; color:var(--text-secondary);">
-                Khách hàng: <strong style="color:var(--text-primary);">{{ order.customer_name }}</strong>
+            <p style="margin:6px 0 0; font-size:1.05rem; color:var(--text-secondary);">
+                Người đặt: <strong style="color:var(--text-primary);">{{ order.customer_name }}</strong>
+            </p>
+            {% endif %}
+            {% if order.voucher_code %}
+            <p style="margin:6px 0 0; font-size:0.95rem; color:var(--text-secondary);">
+                Mã giảm giá: <strong>{{ order.voucher_code }}</strong>
             </p>
             {% endif %}
         </div>
         <div style="text-align:right;">
-            <span id="order-status-badge" class="badge {% if order.status == 'delivered' or order.status == 'DELIVERED' %}badge-success{% elif order.status == 'paid' or order.status == 'PAID' or order.status == 'COMPLETED' or order.status == 'WAITING_INVENTORY_CONFIRM' or order.status == 'PROCESSING' or order.status == 'SHIPPING' %}badge-info{% elif order.status == 'cancelled' or order.status == 'CANCELLED' or order.status == 'failed_payment' %}badge-danger{% else %}badge-warning{% endif %}" style="font-size:1.1rem; padding:8px 12px;">
-                {{ order.status_vi }}
+            <span id="order-status-badge" class="badge {{ order.status|order_status_badge }}" style="font-size:1.05rem; padding:8px 12px;">
+                {% if order.status_vi %}{{ order.status_vi }}{% else %}{{ order.status|vi_status }}{% endif %}
             </span>
         </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:20px; margin-bottom:28px;">
+        <div style="background:var(--bg-color); padding:16px; border-radius:12px;">
+            <h3 style="margin:0 0 12px; font-size:1rem;">Thông tin người nhận</h3>
+            {% if order.recipient_name %}
+            <p style="margin:0 0 6px;"><strong>{{ order.recipient_name }}</strong></p>
+            <p style="margin:0 0 6px; color:var(--text-secondary);">📞 {{ order.recipient_phone }}</p>
+            <p style="margin:0; color:var(--text-secondary);">📍 {{ order.recipient_address }}</p>
+            {% else %}
+            <p style="margin:0; color:var(--text-secondary);">Chưa có thông tin người nhận.</p>
+            {% endif %}
+        </div>
+
+        <div style="background:var(--bg-color); padding:16px; border-radius:12px;">
+            <h3 style="margin:0 0 12px; font-size:1rem;">Vận chuyển</h3>
+            {% if order.shipping_method_name %}
+            <p style="margin:0 0 6px;"><strong>{{ order.shipping_method_name }}</strong></p>
+            {% endif %}
+            <p style="margin:0; color:var(--text-secondary);">
+                Phí vận chuyển: <strong style="color:var(--text-primary);">{{ order.shipping_fee_fmt }}</strong>
+            </p>
+        </div>
+
+        {% if order.notes %}
+        <div style="background:var(--bg-color); padding:16px; border-radius:12px;">
+            <h3 style="margin:0 0 12px; font-size:1rem;">Ghi chú</h3>
+            <p style="margin:0; color:var(--text-secondary); white-space:pre-wrap;">{{ order.notes }}</p>
+        </div>
+        {% endif %}
     </div>
 
     <h3 style="margin-bottom:16px;">Danh sách sản phẩm</h3>
@@ -37,7 +75,20 @@
             <tbody>
                 {% for item in order.items %}
                 <tr>
-                    <td>{{ item.product_name }}</td>
+                    <td>
+                        {% if item.product_id %}
+                        <a href="/products/{{ item.product_id }}/" style="font-weight:600; color:var(--primary); text-decoration:none;">
+                            {{ item.product_name }}
+                        </a>
+                        {% if is_customer and can_review_order %}
+                        <div style="margin-top:8px;">
+                            <a href="/products/{{ item.product_id }}/#reviews" class="btn btn-secondary btn-sm">⭐ Đánh giá sản phẩm</a>
+                        </div>
+                        {% endif %}
+                        {% else %}
+                        {{ item.product_name }}
+                        {% endif %}
+                    </td>
                     <td style="text-align:right;">{{ item.unit_price_fmt }}</td>
                     <td style="text-align:center;">{{ item.quantity }}</td>
                     <td style="text-align:right; font-weight:600;">{{ item.line_total_fmt }}</td>
@@ -51,22 +102,43 @@
         </table>
     </div>
 
-    <div style="margin-top:24px; text-align:right;">
-        <h2 style="color:var(--primary); font-size:1.6rem; margin:0;">
-            Tổng cộng: {{ order.total_amount_fmt }}
-        </h2>
+    <div style="margin-top:24px; max-width:360px; margin-left:auto;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="color:var(--text-secondary);">Tạm tính:</span>
+            <span>{{ order.subtotal_fmt }}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="color:var(--text-secondary);">Phí vận chuyển:</span>
+            <span>{{ order.shipping_fee_fmt }}</span>
+        </div>
+        {% if order.discount_amount and order.discount_amount != "0.00" and order.discount_amount != 0 %}
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px; color:#059669;">
+            <span>Giảm giá:</span>
+            <span>-{{ order.discount_amount_fmt }}</span>
+        </div>
+        {% endif %}
+        <div style="display:flex; justify-content:space-between; font-weight:700; font-size:1.2rem; border-top:1px solid var(--border); padding-top:12px; margin-top:8px;">
+            <span>Tổng cộng:</span>
+            <span style="color:var(--primary);">{{ order.total_amount_fmt }}</span>
+        </div>
     </div>
 
-    <div style="margin-top:32px; display:flex; justify-content:space-between; align-items:center; padding-top:20px; border-top:1px solid var(--border);">
+    <div style="margin-top:32px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding-top:20px; border-top:1px solid var(--border);">
         <a href="{% url 'order_list' %}" class="btn btn-secondary">← Quay lại danh sách</a>
-        
-        {% if is_customer %}
-        {% if order.status == 'PENDING_PAYMENT' or order.status == 'pending_payment' %}
-        <a href="{% url 'order_pay' order.id %}" class="btn btn-success" style="font-size:1.1rem; padding:10px 24px; font-weight:600; box-shadow:0 4px 12px rgba(16, 185, 129, 0.2);">
-            💳 Thanh toán ngay
-        </a>
-        {% endif %}
-        {% endif %}
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            {% if has_shipping %}
+            <a href="{% url 'order_tracking' order.id %}" class="btn btn-primary btn-sm">📍 Theo dõi vận chuyển</a>
+            {% elif order.status != 'PENDING_PAYMENT' and order.status != 'pending_payment' %}
+            <span class="btn btn-secondary btn-sm" style="opacity:0.85; cursor:default;">⏳ Đang khởi tạo vận chuyển...</span>
+            {% endif %}
+            {% if is_customer %}
+            {% if order.status == 'PENDING_PAYMENT' or order.status == 'pending_payment' %}
+            <a href="{% url 'order_pay' order.id %}" class="btn btn-success" style="font-size:1.05rem; padding:10px 24px; font-weight:600;">
+                💳 Thanh toán ngay
+            </a>
+            {% endif %}
+            {% endif %}
+        </div>
     </div>
 </div>
 
@@ -74,18 +146,17 @@
 document.addEventListener("DOMContentLoaded", function() {
     const badge = document.getElementById("order-status-badge");
     if (!badge || !badge.classList.contains("badge-warning")) return;
-    
+
     const orderId = "{{ order.id }}";
-    
-    const pollInterval = setInterval(() => {
+
+    setInterval(() => {
         fetch(`/orders/api/status/?ids=${orderId}`)
             .then(res => res.json())
             .then(data => {
                 if (data.statuses && data.statuses[orderId]) {
                     const info = data.statuses[orderId];
                     if (badge.innerText.trim() !== info.vi) {
-                        // If status changed from pending to paid/completed, reload page to update actions
-                        if (info.raw === 'paid' || info.raw === 'PAID' || info.raw === 'COMPLETED' || info.raw === 'WAITING_INVENTORY_CONFIRM' || info.raw === 'PROCESSING' || info.raw === 'SHIPPING') {
+                        if (info.raw === 'paid' || info.raw === 'PAID' || info.raw === 'COMPLETED' || info.raw === 'WAITING_INVENTORY_CONFIRM' || info.raw === 'PROCESSING' || info.raw === 'SHIPPING' || info.raw === 'DELIVERED') {
                             window.location.reload();
                         } else {
                             badge.className = `badge ${info.badge}`;

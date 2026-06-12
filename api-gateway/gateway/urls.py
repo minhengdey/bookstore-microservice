@@ -11,6 +11,8 @@ urlpatterns = [
 
     # ── Dashboard ──────────────────────────────────────────────────────────────
     path("",                views.home,           name="home"),
+    path("api/guest/products/", views.guest_products_api, name="guest_products_api"),
+    path("api/home/products/", views.home_products_api, name="home_products_api"),
 
     # ── Products ───────────────────────────────────────────────────────────────
     path("products/",                         views.product_list,    name="product_list"),
@@ -49,6 +51,7 @@ urlpatterns = [
     path("support/",                          views.support_list,    name="support_list"),
     path("support/new/",                      views.support_create,  name="support_create"),
     path("support/<str:ticket_id>/",          views.support_detail,  name="support_detail"),
+    path("support/<str:ticket_id>/api/messages/", views.support_ticket_messages_api, name="support_ticket_messages_api"),
 
     # ── Staff Portal (Phase 3) ─────────────────────────────────────────────────
     path("staff/dashboard/",                  staff_views.staff_dashboard,       name="staff_dashboard"),
@@ -59,10 +62,14 @@ urlpatterns = [
     path("staff/customers/<int:customer_id>/", staff_views.staff_customer_detail, name="staff_customer_detail"),
     path("staff/tickets/",                    staff_views.staff_ticket_list,     name="staff_ticket_list"),
     path("staff/tickets/<str:ticket_id>/",    staff_views.staff_ticket_detail,   name="staff_ticket_detail"),
+    path("staff/tickets/<str:ticket_id>/api/messages/", staff_views.staff_ticket_messages_api, name="staff_ticket_messages_api"),
 
     # ── Profile & Addresses ────────────────────────────────────────────────────
     path("profile/",                          views.profile_view,    name="profile"),
     path("addresses/add/",                    views.address_add,     name="address_add"),
+    path("addresses/api/",                    views.addresses_api,   name="addresses_api"),
+    path("cart/<int:customer_id>/checkout/shipping-fees/", views.checkout_shipping_fees_api, name="checkout_shipping_fees_api"),
+    path("cart/<int:customer_id>/checkout/apply-voucher/", views.checkout_apply_voucher_api, name="checkout_apply_voucher_api"),
     path("addresses/<int:address_id>/delete/",views.address_delete,  name="address_delete"),
     path("addresses/<int:address_id>/default/",views.address_set_default, name="address_set_default"),
 
@@ -72,10 +79,13 @@ urlpatterns = [
     path("admin/recommendation/",             admin_views.admin_recommendation, name="admin_recommendation"),
     path("admin/products/",                   admin_views.admin_product_list, name="admin_product_list"),
     path("admin/products/create/",            admin_views.admin_product_create, name="admin_product_create"),
+    path("admin/products/<int:product_id>/edit/", admin_views.admin_product_edit, name="admin_product_edit"),
     path("admin/categories/",                 admin_views.admin_category_list, name="admin_category_list"),
     path("admin/categories/create/",          admin_views.admin_category_create, name="admin_category_create"),
+    path("admin/categories/<int:category_id>/edit/", admin_views.admin_category_edit, name="admin_category_edit"),
     path("admin/brands/",                     admin_views.admin_brand_list, name="admin_brand_list"),
     path("admin/brands/create/",              admin_views.admin_brand_create, name="admin_brand_create"),
+    path("admin/brands/<int:brand_id>/edit/", admin_views.admin_brand_edit, name="admin_brand_edit"),
     path("admin/products/<int:product_id>/variants/create/", admin_views.admin_variant_create, name="admin_variant_create"),
     path("admin/inventory/",                  admin_views.admin_inventory_list, name="admin_inventory_list"),
     path("admin/orders/",                     admin_views.admin_order_list, name="admin_order_list"),
@@ -84,4 +94,5 @@ urlpatterns = [
     path("admin/customers/<int:customer_id>/", admin_views.admin_customer_detail, name="admin_customer_detail"),
     path("admin/tickets/",                    admin_views.admin_ticket_list, name="admin_ticket_list"),
     path("admin/tickets/<str:ticket_id>/",    admin_views.admin_ticket_detail, name="admin_ticket_detail"),
+    path("admin/tickets/<str:ticket_id>/api/messages/", admin_views.admin_ticket_messages_api, name="admin_ticket_messages_api"),
 ]
