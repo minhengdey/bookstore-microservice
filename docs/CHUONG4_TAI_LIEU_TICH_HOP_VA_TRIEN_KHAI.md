@@ -1,2367 +1,2809 @@
-# CHƯƠNG 4: TÍCH HỢP VÀ TRIỂN KHAI
+# CHƯƠNG 4: XÂY DỰNG VÀ TÍCH HỢP TOÀN BỘ HỆ THỐNG
 
-Hành trình xây dựng một kiến trúc Microservices không chỉ dừng lại ở việc viết mã nguồn cho các dịch vụ riêng lẻ. Thử thách khó khăn nhất nằm ở khâu "kết dính" các dịch vụ lại với nhau thành một khối thống nhất có thể tự động giao tiếp, phục hồi sau sự cố và triển khai nhất quán trên mọi môi trường. Chương này trình bày chi tiết bức tranh toàn cảnh về cách 8 microservices kết nối, cơ chế xác thực thông suốt, chiến lược Dockerization, hệ thống logging phân tán, và toàn bộ luồng giao dịch End-to-End của hệ thống E-commerce.
-
----
-
-## 4.1 Kiến trúc Tổng thể Hệ thống
-
-### 4.1.0 Sơ đồ Kiến trúc Tổng thể
-
-```mermaid
-graph TB
-    subgraph INTERNET["🌐 Internet"]
-        CLI[Browser / Mobile App]
-    end
-
-    subgraph EDGE["🛡️ Edge Layer — NGINX :80"]
-        N_RL[Rate Limiting<br/>auth:5r/m · critical:10r/s · public:30r/s]
-        N_AUTH[auth_request /auth_verify<br/>Cache 5s per token]
-        N_BLOCK[Block /internal/* → 403]
-    end
-
-    subgraph BFF["🔀 BFF — Django API Gateway :8000"]
-        GW_MW[JWTAuthMiddleware<br/>Bearer / Session Cookie]
-        GW_POOL[Connection Pool<br/>50 connections]
-        GW_PAR[ThreadPoolExecutor<br/>Parallel service calls]
-        GW_CACHE[Redis Cache<br/>API responses]
-    end
-
-    subgraph CORE["⚙️ Core Services"]
-        direction LR
-        AUTH[auth-service :8012]
-        USER[user-service :8001]
-        PROD[product-service :8002]
-        CART[cart-service :8003]
-        ORD[order-service :8007]
-        PAY[payment-service :8008]
-        SHIP[shipping-service :8009]
-        REC[recommender-ai :8011]
-    end
-
-    subgraph WORKERS["👷 Background Workers"]
-        W1[order-outbox-worker]
-        W2[payment-consumer]
-        W3[payment-outbox-worker]
-        W4[dlq-consumer]
-        W5[payment-worker<br/>retry shipping]
-    end
-
-    subgraph INFRA["🗄️ Infrastructure"]
-        PG[(PostgreSQL ×8)]
-        REDIS[(Redis :6379)]
-        MQ[RabbitMQ :5672]
-        NEO[(Neo4j :7687)]
-        JAE[Jaeger :16686]
-    end
-
-    CLI --> EDGE
-    EDGE --> BFF
-    EDGE -->|/auth/*| AUTH
-    BFF --> CORE
-    CORE --> PG
-    PROD --> REDIS
-    BFF --> REDIS
-    ORD --> MQ
-    PAY --> MQ
-    MQ --> WORKERS
-    WORKERS --> PG
-    WORKERS --> SHIP
-    REC --> NEO
-    CORE -.->|X-Request-ID traces| JAE
-
-    style INTERNET fill:#1a1a2e,color:#e8e8f0
-    style EDGE fill:#16213e,color:#e8e8f0
-    style BFF fill:#0f3460,color:#e8e8f0
-    style CORE fill:#533483,color:#e8e8f0
-    style WORKERS fill:#2d132c,color:#e8e8f0
-    style INFRA fill:#16213e,color:#e8e8f0
-```
-
-*Hình 4.1: Kiến trúc tổng thể hệ thống — 4 tầng với 20+ containers*
-
-### 4.1.1 Bức tranh toàn cảnh
-
-Hệ thống được tổ chức theo mô hình **Layered Microservices Architecture** với 4 tầng rõ ràng:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    TẦNG 1: EDGE LAYER                               │
-│  Client (Browser/Mobile App)                                        │
-│         ↓ HTTP/HTTPS                                                │
-│  NGINX :80  ← Rate Limiting, SSL Termination, Auth Caching          │
-└─────────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────────┐
-│                    TẦNG 2: BFF LAYER                                │
-│  Django API Gateway :8000                                           │
-│  ← JWT Decode, Session Management, HTML Rendering, Orchestration    │
-└─────────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────────┐
-│                    TẦNG 3: BUSINESS SERVICES                        │
-│  auth-service :8012  │  user-service :8001  │  product-service :8002│
-│  cart-service :8003  │  order-service :8007  │  payment-service :8008│
-│  shipping-service :8009  │  recommender-ai-service :8011            │
-└─────────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────────┐
-│                    TẦNG 4: DATA & MESSAGING LAYER                   │
-│  PostgreSQL ×8 (DB per service)  │  Redis :6379  │  Neo4j :7687     │
-│  RabbitMQ :5672/:15672           │  Jaeger :16686                   │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### 4.1.2 Nguyên tắc thiết kế cốt lõi
-
-Hệ thống tuân thủ 5 nguyên tắc thiết kế không thể vi phạm:
-
-1. **Single Entry Point:** Mọi request từ bên ngoài đều phải đi qua NGINX → API Gateway. Không một service nào được expose trực tiếp ra Internet.
-
-2. **Database per Service:** Mỗi service sở hữu một PostgreSQL instance riêng biệt. Không có Cross-Database JOIN. Giao tiếp dữ liệu chéo chỉ qua API hoặc Message Queue.
-
-3. **Zero-Trust Internal Network:** Các service trong cùng Docker network không tự động tin tưởng nhau. Mọi internal call đều phải mang HMAC signature và được xác thực.
-
-4. **Eventual Consistency over Strong Consistency:** Hệ thống chấp nhận độ trễ cập nhật 1–2 giây giữa các service để đổi lấy khả năng scale-out không giới hạn.
-
-5. **Fail-Safe by Default:** Mọi external call đều có timeout, retry, và circuit breaker. Lỗi của một service không được phép lan rộng sang service khác.
-
-### 4.1.3 Bảng tổng hợp Services và Dependencies
-
-| Service | Port | Database | Phụ thuộc | Vai trò |
-|---|---|---|---|---|
-| nginx | 80 | — | api-gateway, auth-service | Edge proxy, rate limiting |
-| api-gateway | 8000 | SQLite (session) | Tất cả services | BFF, HTML rendering |
-| auth-service | 8012 | auth_db | user-service | JWT issue/verify |
-| user-service | 8001 | user_db | — | User profiles |
-| product-service | 8002 | product_db | Redis | Catalog, inventory |
-| cart-service | 8003 | cart_db | — | Shopping cart |
-| order-service | 8007 | order_db | product-service, RabbitMQ | Orders, outbox |
-| payment-service | 8008 | pay_db | RabbitMQ, shipping-service | Payments, consumers |
-| shipping-service | 8009 | ship_db | — | Shipping state machine |
-| recommender-ai-service | 8011 | recommender_db | Neo4j, order-service, product-service | AI recommendations |
-| rabbitmq | 5672/15672 | — | — | Message broker |
-| redis | 6379 | — | — | Cache, circuit breaker |
-| neo4j | 7474/7687 | — | — | Knowledge graph |
-| jaeger | 16686 | — | — | Distributed tracing |
-
+> **Phạm vi:** Mọi mô tả trong chương này đối chiếu trực tiếp với repository `e-commerce` — `docker-compose.yml`, `api-gateway/`, 14+ microservice Django, `nginx/`, `common/`, `recommender-ai-service/`. Thành phần không có trong code được ghi: **"Không tìm thấy trong source code dự án"**.
 
 ---
 
-## 4.2 Containerization — Docker hóa toàn bộ hệ thống
+## MỤC LỤC CHƯƠNG 4
 
-### 4.2.0 Sơ đồ Docker Compose Dependency Graph
+| Mục | Tiêu đề |
+|-----|---------|
+| **4.1** | Tổng quan quá trình xây dựng hệ thống |
+| **4.2** | Kiến trúc triển khai thực tế |
+| **4.3** | Cấu trúc source code |
+| **4.4** | Công nghệ sử dụng |
+| **4.5** | Xây dựng Backend |
+| **4.6** | Xây dựng AI Service |
+| **4.7** | Tích hợp AI và hệ thống thương mại điện tử |
+| **4.8** | Triển khai Knowledge Base |
+| **4.9** | Triển khai Graph Database |
+| **4.10** | Triển khai Recommendation System |
+| **4.11** | Triển khai Chatbot |
+| **4.12** | Triển khai hệ thống bằng Docker |
+| **4.13** | Triển khai API |
+| **4.14** | Thể hiện kết quả hệ thống |
+| 4.14.1–4.14.11 | Các màn hình chi tiết |
+| **4.15** | Đánh giá kết quả triển khai |
+| **4.16** | Nhận xét chương |
+
+---
+
+## 4.1 TỔNG QUAN QUÁ TRÌNH XÂY DỰNG HỆ THỐNG
+
+### 4.1.1 Mục tiêu triển khai
+
+Đồ án không dừng ở thiết kế trên giấy (Chương 2) và thiết kế AI (Chương 3) mà **hiện thực hóa** thành hệ thống chạy được bằng `docker-compose up`. Mục tiêu cụ thể:
+
+| STT | Mục tiêu | Cách đo lường trong dự án |
+|-----|----------|---------------------------|
+| M1 | Khách hàng mua hàng end-to-end | Đăng ký → xem SP → giỏ → checkout → thanh toán → theo dõi đơn |
+| M2 | Microservice độc lập | Mỗi domain có DB riêng, deploy container riêng |
+| M3 | Bảo mật xuyên service | JWT + HMAC nội bộ (`common/auth.py`) |
+| M4 | AI tích hợp storefront | Gợi ý trang chủ, chatbot Mochi, behavior tracking |
+| M5 | Vận hành async | RabbitMQ outbox: payment → shipping, events → AI |
+| M6 | Mở rộng SAGA v2 | `catalog-service` + `inventory-service` (song song legacy) |
+
+### 4.1.2 Các thành phần hệ thống sau khi hoàn thiện
 
 ```mermaid
-graph TD
-    subgraph DBS["🗄️ Databases (khởi động song song)"]
-        ADB[(auth-db :5433)]
-        UDB[(user-db :55437)]
-        PDB[(product-db :55432)]
-        CDB[(cart-db :55433)]
-        ODB[(order-db :55434)]
-        PYDB[(payment-db :55435)]
-        SDB[(shipping-db :55436)]
-        RDB[(recommender-db :55438)]
+flowchart TB
+    subgraph Client
+        BR[Trình duyệt]
     end
-
-    subgraph INFRA["🔧 Infrastructure"]
-        MQ[RabbitMQ :5672/:15672]
-        REDIS[Redis :6379]
-        NEO[Neo4j :7474/:7687]
-        JAE[Jaeger :16686]
+    subgraph Edge
+        NG[NGINX :80]
     end
-
-    subgraph SERVICES["⚙️ Services"]
-        AUTH[auth-service :8012]
-        USER[user-service :8001]
-        PROD[product-service :8002]
-        CART[cart-service :8003]
-        ORD[order-service :8007]
-        PAY[payment-service :8008]
-        SHIP[shipping-service :8009]
-        REC[recommender-ai :8011]
+    subgraph BFF
         GW[api-gateway :8000]
     end
+    subgraph Identity["Nhóm Identity — 2 service"]
+        AUTH[auth-service :8012]
+        USER[user-service :8001]
+    end
+    subgraph Catalog["Nhóm Catalog — 3 service"]
+        PROD[product-service :8002]
+        CAT[catalog-service :8010]
+        INV[inventory-service :8013]
+    end
+    subgraph Transaction["Nhóm Giao dịch — 4 service"]
+        CART[cart-service :8003]
+        ORD[order-service :8014]
+        PAY[payment-service :8015]
+        SHIP[shipping-service :8009]
+    end
+    subgraph Engagement["Nhóm Engagement — 4 service"]
+        PROM[promotion-service :8018]
+        INT[interaction-service :8017]
+        NOTIF[notification-service :8016]
+        REC[recommender-ai-service :8011]
+    end
+    subgraph ML["ML riêng"]
+        MS[model-serving-service :8019]
+    end
+    subgraph Data["Hạ tầng dữ liệu"]
+        PG[(PostgreSQL ×14)]
+        RD[(Redis)]
+        MQ[RabbitMQ]
+        N4J[(Neo4j)]
+    end
+    BR --> NG --> GW
+    GW --> Identity
+    GW --> Catalog
+    GW --> Transaction
+    GW --> Engagement
+    REC --> MS
+    REC --> N4J
+    REC --> PROD
+    Transaction --> PG
+    Engagement --> PG
+    Engagement --> MQ
+    Identity --> PG
+    Catalog --> PG
+```
 
-    subgraph WORKERS["👷 Workers"]
-        OW[order-outbox-worker]
-        PC[payment-consumer]
-        POW[payment-outbox-worker]
-        DLQ[dlq-consumer]
-        PW[payment-worker]
+### 4.1.3 Phạm vi triển khai
+
+**Trong phạm vi đồ án (có trong repo):**
+- Storefront Django Templates qua `api-gateway` (không SPA React)
+- Luồng đặt hàng **legacy** qua `order-service/orders/` + `product-service/reserve-stock`
+- Thanh toán MOCK/COD qua `payment-service`
+- AI: hybrid recommender + RAG chatbot + Neo4j event sync
+- Portal Staff (`/staff/`) và Admin (`/admin/`)
+
+**Ngoài phạm vi / chưa hoàn thiện:**
+- Checkout SAGA v2 trên BFF (code có, storefront chưa gọi)
+- OAuth Google/Facebook, OTP, quên mật khẩu
+- Payment gateway thật VNPay/MoMo
+- Kubernetes production
+- **React/Next.js:** Không tìm thấy trong source code dự án
+
+### 4.1.4 Vai trò từng lớp — giải thích dễ hiểu
+
+| Thành phần | Vai trò (nói đơn giản) | Thư mục / container |
+|------------|------------------------|-------------------|
+| **Frontend** | Giao diện HTML user nhìn thấy | `api-gateway/templates/`, `static/` |
+| **Backend API** | 14 microservice xử lý nghiệp vụ — mỗi service 1 container + 1 DB | `*-service/` |
+| **BFF (api-gateway)** | Gọi nhiều microservice, gộp kết quả thành 1 trang HTML | `api-gateway/gateway/` |
+| **Database** | Mỗi service 1 DB PostgreSQL riêng | `*-db` containers |
+| **AI Service** | Gợi ý + chat | `recommender-ai-service` |
+| **Knowledge Base** | Catalog text cho chatbot | `catalog_hybrid_index.pkl` |
+| **Vector index** | Embedding tìm kiếm semantic | pickle in-memory (**không ChromaDB**) |
+| **Neo4j** | Đồ thị user–product | container `neo4j` |
+| **Recommendation Engine** | `RecommenderService` hybrid | Python in-process |
+| **LLM** | Groq API sinh câu trả lời | `rag/rag_llm.py` |
+
+### 4.1.5 Quy trình xây dựng theo giai đoạn
+
+1. **Giai đoạn 1 — Hạ tầng:** `docker-compose.yml`, PostgreSQL, Redis, RabbitMQ, `common/`.
+2. **Giai đoạn 2 — Core commerce:** auth → user → product → cart → order → payment → shipping.
+3. **Giai đoạn 3 — BFF:** `api-gateway` templates + proxy REST nội bộ.
+4. **Giai đoạn 4 — Mở rộng:** promotion, interaction, notification (code), catalog/inventory v2.
+5. **Giai đoạn 5 — AI:** recommender-ai-service, Neo4j, chatbot widget, behavior tracking.
+6. **Giai đoạn 6 — Edge:** NGINX rate limit, auth_request introspect.
+
+### 4.1.6 Liên kết Chương 2 và Chương 3 với triển khai
+
+| Thiết kế (Chương 2–3) | Triển khai thực tế (Chương 4) |
+|------------------------|-------------------------------|
+| Microservice architecture | 14 service + workers trong compose |
+| API Gateway pattern | `api-gateway` Django BFF |
+| RAG + GraphRAG | `hybrid_retriever.py` + `GraphRepository` + Neo4j |
+| Hybrid recommender | `RecommenderService` 5 chiến lược |
+| Event-driven | RabbitMQ consumers |
+| Docker deployment | `docker-compose.yml` đầy đủ |
+
+### Nhận xét mục 4.1
+
+Chương 4 mô tả **hệ thống thật đang chạy**, không phải kiến trúc lý tưởng. Hai luồng order (legacy + SAGA) cùng tồn tại — cần nêu rõ khi bảo vệ.
+
+## 4.2 KIẾN TRÚC TRIỂN KHAI THỰC TẾ
+
+### 4.2.1 Sơ đồ kiến trúc hệ thống
+
+Sơ đồ dưới đây mô tả **luồng thực tế** khi người dùng truy cập website — không phải sơ đồ lý thuyết từ Chương 2.
+
+```mermaid
+flowchart TB
+    subgraph Client["Client (Trình duyệt)"]
+        BR[HTTP Request]
+    end
+    subgraph Edge["Edge Layer"]
+        NG[NGINX :80]
+    end
+    subgraph BFF["BFF — api-gateway :8000"]
+        GW[Django Templates + proxy REST]
+    end
+    subgraph AuthMS["auth-service :8012"]
+        AUTH[JWT · Introspect]
+        AUTHDB[(auth_db)]
+        AUTH --- AUTHDB
+    end
+    subgraph UserMS["user-service :8001"]
+        USER[Profile · RBAC]
+        USERDB[(user_db)]
+        USER --- USERDB
+    end
+    subgraph ProdMS["product-service :8002"]
+        PROD[Catalog · Stock]
+        PRODDB[(product_db)]
+        PROD --- PRODDB
+    end
+    subgraph CartMS["cart-service :8003"]
+        CART[Giỏ hàng]
+        CARTDB[(cart_db)]
+        CART --- CARTDB
+    end
+    subgraph OrderMS["order-service :8014"]
+        ORD[Đơn hàng · Outbox]
+        ORDDB[(order_db)]
+        ORD --- ORDDB
+    end
+    subgraph PayMS["payment-service :8015"]
+        PAY[Thanh toán]
+        PAYDB[(pay_db)]
+        PAY --- PAYDB
+    end
+    subgraph ShipMS["shipping-service :8009"]
+        SHIP[Vận chuyển]
+        SHIPDB[(ship_db)]
+        SHIP --- SHIPDB
+    end
+    subgraph PromoMS["promotion-service :8018"]
+        PROM[Khuyến mãi]
+    end
+    subgraph InterMS["interaction-service :8017"]
+        INT[Review · Behavior events]
+        INTDB[(interaction_db)]
+        INT --- INTDB
+    end
+    subgraph AIMs["recommender-ai-service :8011"]
+        REC[RAG Chat · Recommender]
+        RECDB[(recommender_db)]
+        KB[catalog_hybrid_index.pkl]
+        N4J[(Neo4j)]
+        REC --- RECDB
+    end
+    subgraph Infra["Hạ tầng messaging"]
+        MQ[RabbitMQ]
+        RD[(Redis)]
+    end
+    subgraph LLMExt["Groq API — bên ngoài"]
+        GROQ[LLM sinh câu trả lời]
     end
 
-    subgraph NGINX_SVC["🛡️ NGINX :80"]
-        NGX[nginx]
-    end
-
-    ADB -->|healthy| AUTH
-    UDB -->|healthy| USER
-    PDB -->|healthy| PROD
-    CDB -->|healthy| CART
-    ODB -->|healthy| ORD
-    PYDB -->|healthy| PAY
-    SDB -->|healthy| SHIP
-    RDB -->|healthy| REC
-    NEO -->|started| REC
-
-    ODB & MQ -->|healthy| OW
-    PYDB & MQ -->|healthy| PC & POW & DLQ
-    PYDB & PAY -->|healthy| PW
-
-    AUTH & USER & PROD & CART & ORD & PAY & SHIP & REC & GW --> NGX
-
-    style DBS fill:#1a1a2e,color:#e8e8f0
-    style INFRA fill:#16213e,color:#e8e8f0
-    style SERVICES fill:#0f3460,color:#e8e8f0
-    style WORKERS fill:#533483,color:#e8e8f0
-    style NGINX_SVC fill:#2d132c,color:#e8e8f0
+    BR --> NG --> GW
+    GW --> AUTH
+    GW --> USER
+    GW --> PROD
+    GW --> CART
+    GW --> ORD
+    GW --> PAY
+    GW --> SHIP
+    GW --> PROM
+    GW --> INT
+    GW -->|POST /ai/chat/| REC
+    REC --> KB
+    REC --> N4J
+    REC --> GROQ
+    REC -->|hydrate| PROD
+    ORD --> MQ
+    INT --> MQ
+    MQ --> REC
+    PROD --> RD
 ```
 
-*Hình 4.2: Docker Compose dependency graph — thứ tự khởi động và healthcheck*
-
-### 4.2.1 Triết lý Dockerfile
-
-Tất cả services đều dùng cùng một pattern Dockerfile nhất quán, đảm bảo môi trường build giống hệt nhau:
-
-```dockerfile
-# Ví dụ: api-gateway/Dockerfile
-FROM python:3.11-slim
-
-# Cài dos2unix để xử lý line endings trên Windows/Linux
-RUN apt-get update && apt-get install -y dos2unix && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy requirements trước để tận dụng Docker layer cache
-# Nếu requirements.txt không đổi, pip install không chạy lại
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-# Chuẩn hóa line endings và cấp quyền thực thi
-RUN dos2unix entrypoint.sh && chmod +x entrypoint.sh
-
-EXPOSE 8000
-ENTRYPOINT ["./entrypoint.sh"]
-```
-
-**Lý do dùng `python:3.11-slim`:** Image slim loại bỏ các công cụ không cần thiết (compiler, debug tools), giảm kích thước image từ ~900MB xuống ~150MB, giảm attack surface bảo mật.
-
-**Lý do copy `requirements.txt` trước:** Docker build cache hoạt động theo từng layer. Nếu chỉ thay đổi code Python mà không thay đổi dependencies, layer `pip install` sẽ được cache lại, giảm thời gian build từ vài phút xuống vài giây.
-
-### 4.2.2 Recommender Service — Dockerfile đặc biệt
-
-Recommender AI Service có Dockerfile khác biệt vì cần cài `cron` để chạy scheduled training:
-
-```dockerfile
-# recommender-ai-service/Dockerfile
-FROM python:3.11-slim
-
-# Cài thêm cron cho scheduled AI training
-RUN apt-get update && apt-get install -y dos2unix cron && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-COPY requirements.txt .
-
-# Timeout dài hơn vì AI packages (torch, tensorflow) rất lớn
-RUN pip install --no-cache-dir --default-timeout=100 -r requirements.txt
-
-COPY . .
-RUN dos2unix entrypoint.sh && chmod +x entrypoint.sh
-EXPOSE 8000
-ENTRYPOINT ["./entrypoint.sh"]
-```
-
-**Dependencies AI đặc biệt:**
-```
-# CPU-only builds để giảm kích thước và tương thích rộng hơn
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.1.0+cpu
-tensorflow-cpu>=2.16.1,<2.18
-sentence-transformers>=2.6.0
-faiss-cpu>=1.7.4
-scikit-learn>=1.3.0
-networkx>=3.0
-groq>=0.9.0
-```
-
-### 4.2.3 Entrypoint Scripts — Startup Sequence
-
-Mỗi service có một `entrypoint.sh` thực hiện chuỗi khởi động an toàn:
-
-**Pattern chung (auth-service, order-service, payment-service, shipping-service, user-service):**
-
-```sh
-#!/bin/sh
-# Bước 1: Chờ PostgreSQL sẵn sàng (polling loop)
-echo "[entrypoint] Waiting for PostgreSQL at $DB_HOST:$DB_PORT ..."
-until python -c "
-import psycopg2, os, sys
-try:
-    psycopg2.connect(
-        host=os.environ.get('DB_HOST','host.docker.internal'),
-        port=int(os.environ.get('DB_PORT','5432')),
-        user=os.environ.get('DB_USER','postgres'),
-        password=os.environ.get('DB_PASSWORD','postgres'),
-        dbname=os.environ.get('DB_NAME','postgres'),
-    ).close()
-    sys.exit(0)
-except Exception:
-    sys.exit(1)
-" 2>/dev/null
-do
-    echo "[entrypoint] PostgreSQL not ready - retrying in 2s..."
-    sleep 2
-done
-
-# Bước 2: Cài common library (editable install)
-if [ -d /app/common ]; then
-    pip install -q -e /app/common || true
-fi
-
-# Bước 3: Chạy migrations tự động
-python manage.py makemigrations --no-input
-python manage.py migrate --no-input
-
-# Bước 4: Khởi động server (hoặc custom command nếu có)
-if [ "$#" -gt 0 ]; then
-    exec "$@"   # Cho phép override command (dùng cho workers)
-fi
-exec python manage.py runserver 0.0.0.0:8000
-```
-
-**API Gateway — dùng Gunicorn thay vì runserver:**
-
-```sh
-#!/bin/sh
-# API Gateway không cần PostgreSQL (dùng SQLite cho session)
-echo "[entrypoint] Starting API Gateway with Gunicorn..."
-
-WORKERS=${GUNICORN_WORKERS:-4}
-THREADS=${GUNICORN_THREADS:-4}
-KEEP_ALIVE=${GUNICORN_KEEP_ALIVE:-5}
-TIMEOUT=${GUNICORN_TIMEOUT:-120}
-
-exec gunicorn api_gateway.wsgi:application \
-    --bind 0.0.0.0:8000 \
-    --workers ${WORKERS} \
-    --threads ${THREADS} \
-    --keep-alive ${KEEP_ALIVE} \
-    --timeout ${TIMEOUT}
-```
-
-**Lý do API Gateway dùng Gunicorn:** `runserver` là development server, không thread-safe và không xử lý concurrent requests tốt. Gunicorn với 4 workers × 4 threads = 16 concurrent requests, phù hợp cho production.
-
-**Recommender Service — khởi động cron:**
-
-```sh
-#!/bin/sh
-# ... chờ PostgreSQL, install common, migrate ...
-
-# Khởi động cron daemon cho scheduled training
-service cron start
-python manage.py crontab add   # Đăng ký job train AI lúc 2:00 AM
-
-# --noreload để tránh cron bị restart khi file thay đổi
-exec python manage.py runserver 0.0.0.0:8000 --noreload
-```
-
-
-### 4.2.4 Docker Compose — Orchestration toàn hệ thống
-
-`docker-compose.yml` là file điều phối trung tâm, khởi chạy toàn bộ 20+ containers bằng một lệnh duy nhất `docker-compose up -d`.
-
-#### Cấu trúc Database per Service
-
-Mỗi service có một PostgreSQL container riêng biệt hoàn toàn:
-
-```yaml
-# docker-compose.yml — 8 PostgreSQL instances độc lập
-services:
-  product-db:
-    image: postgres:15-alpine
-    ports:
-      - "55432:5432"   # Port khác nhau để debug từ host
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${DB_NAME_PRODUCT:-product_db}
-    volumes:
-      - product_db_data:/var/lib/postgresql/data
-    networks:
-      - Ecommerce-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  cart-db:
-    image: postgres:15-alpine
-    ports:
-      - "55433:5432"
-    environment:
-      - POSTGRES_DB=${DB_NAME_CART:-cart_db}
-    # ... tương tự ...
-
-  order-db:
-    ports: ["55434:5432"]
-    environment:
-      - POSTGRES_DB=${DB_NAME_ORDER:-order_db}
-
-  payment-db:
-    ports: ["55435:5432"]
-    environment:
-      - POSTGRES_DB=${DB_NAME_PAY:-pay_db}
-
-  shipping-db:
-    ports: ["55436:5432"]
-    environment:
-      - POSTGRES_DB=${DB_NAME_SHIP:-ship_db}
-
-  user-db:
-    ports: ["55437:5432"]
-    environment:
-      - POSTGRES_DB=${DB_NAME_USER:-user_db}
-
-  recommender-db:
-    ports: ["55438:5432"]
-    environment:
-      - POSTGRES_DB=${DB_NAME_RECOMMENDER:-recommender_db}
-
-  auth-db:
-    ports: ["5433:5432"]
-    environment:
-      - POSTGRES_DB=${DB_NAME_AUTH:-auth_db}
-```
-
-**Tại sao mỗi service cần DB riêng?** Nếu dùng chung 1 PostgreSQL, khi Product Service chạy query nặng (full-table scan tìm kiếm), nó sẽ chiếm lock và làm chậm toàn bộ hệ thống kể cả Order Service đang xử lý thanh toán. Với DB riêng, sự cố ở Product DB không ảnh hưởng Order DB.
-
-#### Healthcheck và Dependency Chain
-
-```yaml
-# Ví dụ: order-service chỉ khởi động sau khi order-db healthy
-order-service:
-  build: ./order-service
-  ports:
-    - "${PORT_ORDER:-8007}:8000"
-  environment:
-    - DB_HOST=order-db
-    - PYTHONPATH=/app/common
-    - SERVICE_NAME=order-service
-    - INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,
-        product-service,cart-service,shipping-service,user-service,recommender-ai-service
-  depends_on:
-    order-db:
-      condition: service_healthy   # Chờ healthcheck pass
-  volumes:
-    - ./common:/app/common         # Mount common library
-  networks:
-    - Ecommerce-net
-```
-
-**`condition: service_healthy`** là cơ chế quan trọng: Docker Compose sẽ không khởi động `order-service` cho đến khi `order-db` trả về `pg_isready` thành công. Điều này tránh tình trạng service khởi động trước khi DB sẵn sàng và crash ngay lập tức.
-
-#### Workers và Consumers
-
-Ngoài các service chính, hệ thống còn có 5 background workers:
-
-```yaml
-# Worker 1: Relay OrderOutbox → RabbitMQ
-order-outbox-worker:
-  build: ./order-service
-  command: ["python", "manage.py", "relay_outbox"]
-  depends_on:
-    order-db:
-      condition: service_healthy
-    rabbitmq:
-      condition: service_healthy
-  restart: unless-stopped
-
-# Worker 2: Consume order_events → tạo Payment
-payment-consumer:
-  build: ./payment-service
-  command: ["python", "manage.py", "consume_orders"]
-  depends_on:
-    payment-db:
-      condition: service_healthy
-    rabbitmq:
-      condition: service_healthy
-  restart: unless-stopped
-
-# Worker 3: Relay PaymentOutbox → RabbitMQ
-payment-outbox-worker:
-  build: ./payment-service
-  command: ["python", "manage.py", "relay_outbox"]
-  restart: unless-stopped
-
-# Worker 4: Consume Dead Letter Queue
-dlq-consumer:
-  build: ./payment-service
-  command: ["python", "manage.py", "consume_dlq"]
-  restart: unless-stopped
-
-# Worker 5: Retry failed shipping (mỗi 60 giây)
-payment-worker:
-  build: ./payment-service
-  command:
-    - sh
-    - -c
-    - while true; do python manage.py retry_failed_shipping; sleep 60; done
-  restart: unless-stopped
-```
-
-**`restart: unless-stopped`** đảm bảo workers tự động khởi động lại nếu crash, không cần can thiệp thủ công.
-
-#### Infrastructure Services
-
-```yaml
-# RabbitMQ với Management UI
-rabbitmq:
-  image: rabbitmq:3-management-alpine
-  ports:
-    - "5672:5672"    # AMQP protocol
-    - "15672:15672"  # Management UI
-  environment:
-    RABBITMQ_DEFAULT_USER: user
-    RABBITMQ_DEFAULT_PASS: password
-  volumes:
-    - rabbitmq_data:/var/lib/rabbitmq
-  restart: unless-stopped
-  healthcheck:
-    test: rabbitmq-diagnostics check_port_connectivity
-    interval: 10s
-    timeout: 10s
-    retries: 12
-    start_period: 120s  # RabbitMQ khởi động chậm
-
-# Redis — Cache + Circuit Breaker state
-redis:
-  image: redis:7-alpine
-  ports:
-    - "6379:6379"
-  volumes:
-    - redis_data:/data
-
-# Neo4j — Knowledge Graph cho AI
-neo4j:
-  image: neo4j:5-community
-  ports:
-    - "7474:7474"  # HTTP Browser UI
-    - "7687:7687"  # Bolt protocol
-  environment:
-    - NEO4J_AUTH=neo4j/password123
-  volumes:
-    - ./neo4j_data:/data
-
-# Jaeger — Distributed Tracing
-jaeger:
-  image: jaegertracing/all-in-one:latest
-  ports:
-    - "16686:16686"  # Jaeger UI
-    - "4317:4317"    # OTLP gRPC
-    - "4318:4318"    # OTLP HTTP
-  environment:
-    - COLLECTOR_OTLP_ENABLED=true
-```
-
-#### Docker Network và Volumes
-
-```yaml
-networks:
-  Ecommerce-net:
-    driver: bridge   # Tất cả containers trong cùng virtual network
-
-volumes:
-  product_db_data:
-  cart_db_data:
-  order_db_data:
-  payment_db_data:
-  shipping_db_data:
-  user_db_data:
-  recommender_db_data:
-  auth_db_data:
-  neo4j_data:
-  redis_data:
-  rabbitmq_data:
-```
-
-Named volumes đảm bảo dữ liệu không bị mất khi container restart. Khi chạy `docker-compose down`, dữ liệu vẫn còn. Chỉ `docker-compose down -v` mới xóa volumes.
-
-
----
-
-## 4.3 Common Library — Thư viện Dùng chung
-
-### 4.3.1 Kiến trúc Shared Library
-
-Thay vì copy-paste code giữa 8 services, dự án tổ chức các module dùng chung vào package `ecommerce-common` được cài dưới dạng editable install (`pip install -e /app/common`):
-
-```
-common/
-├── setup.py                 ← Package definition
-└── common/
-    ├── __init__.py
-    ├── auth.py              ← JWT decode, RBAC decorators, HMAC validation
-    ├── client.py            ← InternalClient với Circuit Breaker
-    ├── events.py            ← EventPublisher (RabbitMQ)
-    ├── exceptions.py        ← BaseServiceException
-    ├── logging.py           ← JSONFormatter cho structured logging
-    ├── middleware.py        ← RequestIDMiddleware
-    └── outbox.py            ← AbstractOutboxEvent model
-```
-
-### 4.3.2 Package Setup
-
-```python
-# common/setup.py
-from setuptools import setup, find_packages
-
-setup(
-    name="ecommerce-common",
-    version="0.1.0",
-    packages=find_packages(),
-    install_requires=[
-        "Django>=4.0",
-        "djangorestframework>=3.14",
-        "PyJWT>=2.8.0",
-        "httpx>=0.24.0",
-        "redis>=4.0",
-        "pika>=1.3.2",
-        # OpenTelemetry cho distributed tracing
-        "opentelemetry-api>=1.20.0",
-        "opentelemetry-sdk>=1.20.0",
-        "opentelemetry-exporter-otlp>=1.20.0",
-        "opentelemetry-instrumentation-django>=0.41b0",
-        "opentelemetry-instrumentation-httpx>=0.41b0",
-        "opentelemetry-instrumentation-pika>=0.41b0",
-    ],
-)
-```
-
-Mỗi service mount common library qua Docker volume:
-```yaml
-volumes:
-  - ./common:/app/common
-```
-
-Và cài trong entrypoint:
-```sh
-pip install -q -e /app/common || true
-```
-
-### 4.3.3 Structured JSON Logging
-
-Tất cả services dùng `JSONFormatter` từ common library để xuất log theo định dạng JSON chuẩn, dễ parse bởi các hệ thống log aggregation (ELK Stack, Grafana Loki):
-
-```python
-# common/common/logging.py
-class JSONFormatter(logging.Formatter):
-    def format(self, record):
-        from common.middleware import get_request_id
-
-        log_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": record.levelname,
-            "service_name": getattr(record, "service_name", SERVICE_NAME),
-            "trace_id": getattr(record, "request_id", get_request_id()),
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        if record.exc_info:
-            log_data["exception"] = self.formatException(record.exc_info)
-
-        # Metrics từ extra={} trong logger.info(msg, extra={...})
-        for key in ["latency_ms", "status_code", "target_service",
-                    "reason", "order_id", "endpoint", "span"]:
-            if hasattr(record, key):
-                log_data[key] = getattr(record, key)
-
-        return json.dumps(log_data)
-```
-
-**Ví dụ log output:**
-```json
-{
-  "timestamp": "2026-05-31T10:23:45.123Z",
-  "level": "INFO",
-  "service_name": "order-service",
-  "trace_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "logger": "order.services",
-  "message": "InternalClient: POST http://product-service:8000/internal/reserve-stock/",
-  "target_service": "product-service:8000",
-  "endpoint": "http://product-service:8000/internal/reserve-stock/",
-  "status_code": 200,
-  "latency_ms": 45,
-  "span": "order-service->product-service:8000"
-}
-```
-
-Cấu hình logging trong mỗi service settings:
-```python
-# Ví dụ: order-service/order_service/settings.py
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "json": {
-            "()": "common.logging.JSONFormatter",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "json",
-        }
-    },
-    "root": {"handlers": ["console"], "level": "INFO"},
-}
-```
-
-### 4.3.4 RequestID Middleware — Distributed Tracing Thủ công
-
-```python
-# common/common/middleware.py
-import uuid
-import threading
-from django.utils.deprecation import MiddlewareMixin
-
-_request_local = threading.local()
-
-def get_request_id():
-    return getattr(_request_local, "request_id", None)
-
-class RequestIDMiddleware(MiddlewareMixin):
-    def process_request(self, request):
-        # Lấy từ header nếu có (propagated từ upstream service)
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
-        request.request_id = request_id
-        _request_local.request_id = request_id
-
-    def process_response(self, request, response):
-        if hasattr(request, "request_id"):
-            response["X-Request-ID"] = request.request_id  # Trả về cho client
-        if hasattr(_request_local, "request_id"):
-            del _request_local.request_id
-        return response
-```
-
-`X-Request-ID` được truyền xuyên suốt từ NGINX → API Gateway → các services → workers. Khi có lỗi, kỹ sư có thể tìm toàn bộ log liên quan đến một request bằng cách grep theo `trace_id`.
-
-
----
-
-## 4.4 API Gateway — NGINX + Django BFF
-
-### 4.4.1 Kiến trúc 2 tầng Gateway
-
-Hệ thống sử dụng kiến trúc gateway 2 tầng độc đáo, mỗi tầng có trách nhiệm riêng biệt:
-
-**Tầng 1 — NGINX (True Reverse Proxy):**
-- Rate limiting theo IP
-- SSL/TLS termination
-- Auth token caching (5 giây)
-- Block `/internal/*` routes
-- Proxy headers injection
-
-**Tầng 2 — Django API Gateway (BFF):**
-- JWT decode từ Bearer header hoặc session cookie
-- HTML template rendering
-- Service orchestration (parallel calls)
-- Behavior tracking
-- Redis session management
-
-### 4.4.2 NGINX Configuration Chi tiết
-
-```nginx
-# nginx/nginx.conf
-worker_processes auto;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    # Connection pooling — tái sử dụng TCP connections
-    upstream api_gateway_upstream {
-        server api-gateway:8000;
-        keepalive 16;
-    }
-    upstream auth_service_upstream {
-        server auth-service:8000;
-        keepalive 8;
-    }
-
-    # Cache xác thực token — giảm tải auth-service
-    proxy_cache_path /var/cache/nginx levels=1:2
-                     keys_zone=auth_cache:10m max_size=100m
-                     inactive=60m use_temp_path=off;
-
-    # Performance tuning
-    sendfile on;
-    tcp_nopush on;
-    keepalive_timeout 65;
-    gzip on;
-    gzip_comp_level 5;
-    gzip_types text/plain text/css application/json application/javascript;
-
-    # Rate limit zones — 3 mức độ khác nhau
-    limit_req_zone $binary_remote_addr zone=public_api:10m  rate=30r/s;
-    limit_req_zone $binary_remote_addr zone=auth_api:10m    rate=5r/m;   # Siết chặt nhất
-    limit_req_zone $binary_remote_addr zone=critical_api:10m rate=10r/s;
-
-    # Proxy timeouts
-    proxy_read_timeout    60s;
-    proxy_connect_timeout 15s;
-    proxy_send_timeout    60s;
-
-    # Buffer settings
-    proxy_buffer_size     128k;
-    proxy_buffers         4 256k;
-    proxy_busy_buffers_size 256k;
-
-    # HTTP/1.1 keepalive
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
-
-    server {
-        listen 80;
-
-        # Security headers
-        add_header X-Content-Type-Options  nosniff;
-        add_header X-Frame-Options         DENY;
-        add_header X-XSS-Protection        "1; mode=block";
-        add_header Content-Security-Policy
-            "default-src 'self'; script-src 'self' 'unsafe-inline';
-             style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-             font-src 'self' https://fonts.gstatic.com;";
-
-        # ── Chặn hoàn toàn internal routes từ bên ngoài ──────────────────
-        location ~* /internal/ {
-            return 403;
-        }
-
-        # ── Internal auth verification (chỉ NGINX gọi được) ──────────────
-        location = /auth_verify {
-            internal;
-            proxy_pass http://auth-service:8000/auth/introspect/;
-            proxy_pass_request_body off;
-            proxy_set_header Content-Length "";
-            proxy_set_header X-Original-URI $request_uri;
-            proxy_set_header Authorization $http_authorization;
-            # Cache kết quả 5 giây per token — giảm 80% load lên auth-service
-            proxy_cache auth_cache;
-            proxy_cache_valid 200 204 5s;
-            proxy_cache_key "$http_authorization";
-        }
-
-        # ── Auth APIs — rate limit cực chặt (5 req/phút) ─────────────────
-        location ~* ^/auth/ {
-            limit_req zone=auth_api burst=5 nodelay;
-            proxy_pass http://auth-service:8000;
-            proxy_set_header Host              $host;
-            proxy_set_header X-Real-IP         $remote_addr;
-            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header X-Forwarded-Host  $server_name;
-            proxy_set_header X-Forwarded-Port  $server_port;
-            proxy_redirect ~^http://auth-service:8000(.*?)$ $scheme://$host$1;
-        }
-
-        # ── User APIs — yêu cầu xác thực ─────────────────────────────────
-        location ~* ^/(users|profile)/ {
-            auth_request /auth_verify;
-            auth_request_set $user_id $upstream_http_x_user_id;
-            auth_request_set $role    $upstream_http_x_role;
-            proxy_pass http://user-service:8000;
-            proxy_set_header X-User-Id $user_id;
-            proxy_set_header X-Role    $role;
-            # ... proxy headers ...
-        }
-
-        # ── Critical APIs — rate limit chặt (10 req/s) ───────────────────
-        location ~* ^/(orders|payment|checkout)/ {
-            limit_req zone=critical_api burst=20 nodelay;
-            proxy_pass http://api_gateway_upstream;
-            # ... proxy headers ...
-        }
-
-        # ── Public APIs — thoáng (30 req/s) ──────────────────────────────
-        location ~* ^/(products|categories)/ {
-            limit_req zone=public_api burst=50 nodelay;
-            proxy_pass http://api_gateway_upstream;
-            # ... proxy headers ...
-        }
-
-        # ── Default catch-all ─────────────────────────────────────────────
-        location / {
-            limit_req zone=public_api burst=50 nodelay;
-            proxy_pass http://api_gateway_upstream;
-            # ... proxy headers ...
-        }
-    }
-}
-```
-
-**Phân tích Rate Limiting:**
-
-| Zone | Rate | Burst | Áp dụng cho | Lý do |
-|---|---|---|---|---|
-| `auth_api` | 5r/m | 5 | `/auth/*` | Chống brute-force đăng nhập |
-| `critical_api` | 10r/s | 20 | `/orders/`, `/payment/`, `/checkout/` | Bảo vệ giao dịch tài chính |
-| `public_api` | 30r/s | 50 | `/products/`, `/categories/`, mặc định | Cho phép traffic bình thường |
-
-### 4.4.3 Django API Gateway — Settings và Cấu hình
-
-```python
-# api-gateway/api_gateway/settings.py
-
-# Service URL map — tất cả internal service endpoints
-SERVICE_URLS = {
-    "auth":        os.environ.get("AUTH_SERVICE_URL",    "http://auth-service:8000"),
-    "user":        os.environ.get("USER_SERVICE_URL",    "http://user-service:8000"),
-    "product":     os.environ.get("PRODUCT_SERVICE_URL", "http://product-service:8000"),
-    "cart":        os.environ.get("CART_SERVICE_URL",    "http://cart-service:8000"),
-    "order":       os.environ.get("ORDER_SERVICE_URL",   "http://order-service:8000"),
-    "pay":         os.environ.get("PAY_SERVICE_URL",     "http://payment-service:8000"),
-    "ship":        os.environ.get("SHIP_SERVICE_URL",    "http://shipping-service:8000"),
-    "recommender": os.environ.get("RECOMMENDER_URL",     "http://recommender-ai-service:8000"),
-}
-
-# Redis cache — session backend + API response cache
-REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/1")
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": REDIS_URL,
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "CONNECTION_POOL_KWARGS": {"max_connections": 50},
-        },
-    }
-}
-
-# Session lưu trên Redis — shared across Gunicorn workers
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
-SESSION_COOKIE_AGE = 86400 * 7   # 7 ngày
-
-# Proxy headers từ NGINX
-USE_X_FORWARDED_HOST = True
-USE_X_FORWARDED_PORT = True
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-```
-
-### 4.4.4 Connection Pooling với requests.Session
-
-API Gateway dùng một `requests.Session` toàn cục với connection pool để tái sử dụng TCP connections, giảm overhead TCP handshake:
-
-```python
-# api-gateway/gateway/views.py
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-SESSION = requests.Session()
-adapter = HTTPAdapter(
-    pool_connections=50,
-    pool_maxsize=50,
-    max_retries=Retry(total=1, backoff_factor=0.1)
-)
-SESSION.mount("http://", adapter)
-SESSION.mount("https://", adapter)
-```
-
-
----
-
-## 4.5 Xác thực JWT — Luồng End-to-End
-
-### 4.5.0 Sơ đồ Luồng JWT đầy đủ
+**Phân tích sơ đồ:** Mỗi microservice là **một hộp riêng** kèm database riêng (Database-per-Service). Người dùng **không** gọi trực tiếp microservice — mọi request đi qua NGINX → `api-gateway`. Gateway vừa render HTML, vừa proxy REST nội bộ. `recommender-ai-service` là container độc lập; gateway chỉ forward `/ai/chat/` và `/recommendations/` để tránh lộ API key Groq và CORS.
+
+### 4.2.2 Vai trò từng thành phần
+
+| Thành phần | Vai trò | File / container tham chiếu |
+|------------|---------|----------------------------|
+| **Client** | Gửi HTTP, lưu session cookie Django | Trình duyệt |
+| **NGINX** | Reverse proxy, rate limit, `auth_request` introspect JWT | `nginx/nginx.conf`, container `nginx` |
+| **Frontend** | Template HTML + vanilla JS infinite scroll | `api-gateway/templates/`, `static/` |
+| **Backend API** | Nghiệp vụ tách domain | 14 service trong `docker-compose.yml` |
+| **Database** | Persistence theo service | `*-db` containers |
+| **AI Service** | Gợi ý + chat RAG | `recommender-ai-service/` |
+| **Knowledge Base** | Catalog text đã chunk/index | `rag/catalog_hybrid_index.pkl` |
+| **Vector Database** | Embedding + TF-IDF in-memory | `HybridProductRetriever` — **không ChromaDB/FAISS persistent** |
+| **Neo4j** | Đồ thị user–product cho pipeline GNN | container `neo4j`, `recommendation_pipeline.py` |
+| **Recommendation Engine** | Hybrid CF + co-occurrence + category | `RecommenderService` |
+| **LLM** | Sinh câu trả lời chatbot | Groq qua `rag/rag_llm.py` |
+
+### 4.2.3 Luồng request — ví dụ khách xem trang chủ
+
+1. **Client** gửi `GET /` kèm session cookie.
+2. **NGINX** chuyển tiếp tới `api-gateway:8000`.
+3. **Gateway** `home()` đọc JWT từ session, xác định role (`permissions.py`).
+4. Nếu **customer**: gọi song song:
+   - `GET product-service/products/?flash_sale=true`
+   - `GET product-service/categories/`
+   - `GET recommender-ai-service/recommendations/{entity_id}/`
+5. **product-service** truy vấn `product_db`, trả JSON.
+6. **recommender-ai-service** đọc behavior từ `recommender_db`, chạy `RecommenderService.recommend()`, trả `recommended_product_ids`.
+7. Gateway hydrate product detail từ product-service, format giá VND (`_fmt_product`), render `home.html`.
+
+### 4.2.4 Luồng response
+
+Response luôn là **HTML** (storefront) hoặc **JSON** (API phụ: `/api/home/products/`, `/ai/chat/`). Gateway không trả raw microservice response cho user — nó **biến đổi** dữ liệu:
+- Format tiền: `_fmt_vnd()`
+- Format ngày: `_fmt_date()`
+- Dịch trạng thái: `ORDER_STATUS_VI`, `PRODUCT_STATUS_VI`
+- Gộp nhiều API thành một context template
+
+### 4.2.5 Luồng request — đặt hàng (legacy)
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor C as Client
-    participant N as NGINX :80
-    participant AUTH as auth-service :8012
-    participant GW as API Gateway :8000
-    participant SVC as Downstream Service
-
-    Note over C,N: ĐĂNG NHẬP
-    C->>N: POST /auth/login/ {username, password}
-    N->>AUTH: Forward (rate: 5r/min)
-    AUTH->>AUTH: check_password PBKDF2
-    AUTH->>AUTH: Issue JWT HS256<br/>{user_id, role, entity_id, exp}
-    AUTH-->>N: 200 {access, refresh}
-    N-->>C: 200 {access, refresh}
-    C->>C: Store in session / localStorage
-
-    Note over C,SVC: REQUEST CÓ XÁC THỰC
-    C->>N: GET /orders/ Authorization: Bearer <token>
-    N->>N: Route matching → critical_api zone
-    N->>AUTH: GET /auth/introspect/ (internal auth_request)<br/>Authorization: Bearer <token>
-    Note over N,AUTH: Cache 5s per token hash
-    AUTH->>AUTH: Decode JWT, verify signature
-    AUTH-->>N: 204 No Content<br/>X-User-Id: 42, X-Role: customer
-    N->>N: auth_request_set $user_id, $role
-    N->>GW: GET /orders/<br/>X-User-Id: 42, X-Role: customer
-    GW->>GW: JWTAuthMiddleware: decode JWT
-    GW->>GW: Attach jwt_payload to request
-    GW->>GW: _auth_headers() → X-User-Id, X-User-Role, X-Entity-Id
-    GW->>SVC: GET /orders/<br/>X-User-Id: 42, X-User-Role: customer, X-Entity-Id: 15
-    SVC->>SVC: @require_auth decorator<br/>_get_context_from_headers()
-    SVC-->>GW: 200 {orders: [...]}
-    GW-->>N: 200
-    N-->>C: 200
-
-    Note over C,AUTH: TOKEN REFRESH
-    C->>N: POST /auth/refresh/ {refresh: <token>}
-    N->>AUTH: Forward
-    AUTH->>AUTH: Validate refresh token
-    AUTH->>AUTH: Blacklist old token
-    AUTH->>AUTH: Issue new access token
-    AUTH-->>C: 200 {access: <new_token>}
-```
-
-*Hình 4.3: Luồng JWT đầy đủ — đăng nhập, xác thực request, và refresh token*
-
-### 4.5.1 Luồng xác thực đầy đủ
-
-```
-Client gửi request với Authorization: Bearer <token>
-         │
-         ▼
-    NGINX :80
-    ├── Nếu route là /auth/* → bypass auth_request, forward thẳng
-    ├── Nếu route là /users/* → gọi auth_request /auth_verify
-    │         ├── NGINX gọi auth-service:8000/auth/introspect/
-    │         ├── auth-service decode JWT, trả về 204 + X-User-Id, X-Role
-    │         └── NGINX inject X-User-Id, X-Role vào request headers
-    └── Forward request → api-gateway:8000
-         │
-         ▼
-    JWTAuthMiddleware (api-gateway)
-    ├── Đọc Authorization: Bearer <token> hoặc session["access_token"]
-    ├── Decode JWT bằng JWT_SECRET_KEY (HS256)
-    ├── Gắn jwt_payload vào request object
-    └── Nếu route protected + không có token → redirect login
-         │
-         ▼
-    View function
-    ├── _auth_headers(request) → trích xuất X-User-Id, X-User-Role, X-Entity-Id
-    └── Forward headers xuống downstream services
-         │
-         ▼
-    Downstream service (order-service, cart-service, ...)
-    ├── common/auth.py: _get_context_from_headers(request)
-    │   ├── Đọc HTTP_X_USER_ID, HTTP_X_USER_ROLE, HTTP_X_ENTITY_ID
-    │   └── Fallback: decode JWT trực tiếp nếu headers thiếu (local dev)
-    └── @require_auth / @require_customer / @require_staff decorator
-```
-
-### 4.5.2 JWT Payload Structure
-
-```python
-# Payload được nhúng khi issue token (auth-service)
-{
-    "user_id": 42,           # ID trong auth_db
-    "username": "nguyenvana",
-    "email": "nguyenvana@example.com",
-    "role": "customer",      # customer | staff | manager | admin
-    "entity_id": 15,         # ID trong user_db (customer_id hoặc staff_id)
-    "entity_role": "",       # Vai trò phụ (nếu có)
-    "exp": 1748736000,       # Expiry (24 giờ)
-    "iat": 1748649600,       # Issued at
-    "jti": "abc123..."       # JWT ID (unique per token)
-}
-```
-
-**Tại sao cần `entity_id` riêng biệt với `user_id`?** `user_id` là ID trong `auth_db`, còn `entity_id` là ID trong `user_db`. Hai service này có DB riêng, ID có thể khác nhau. `entity_id` được dùng làm `customer_id` trong Cart, Order — đây là "business identity" của người dùng.
-
-### 4.5.3 IntrospectTokenView — Endpoint xác thực cho NGINX
-
-```python
-# auth-service/authentication/views.py
-class IntrospectTokenView(APIView):
-    permission_classes = [HasValidJWT]
-
-    def get(self, request):
-        """
-        NGINX gọi endpoint này qua auth_request.
-        Trả về 204 No Content nếu token hợp lệ,
-        kèm X-User-Id và X-Role trong response headers.
-        """
-        token = TokenService.extract_token(request)
-        payload = TokenService.decode_token(token)
-
-        response = Response(status=status.HTTP_204_NO_CONTENT)
-        response["X-User-Id"] = str(payload.get("sub", ""))
-        response["X-Role"]    = str(payload.get("role", "customer"))
-        return response
-```
-
-NGINX đọc headers từ response của `auth_verify` và inject vào request gốc:
-```nginx
-auth_request_set $user_id $upstream_http_x_user_id;
-auth_request_set $role    $upstream_http_x_role;
-proxy_set_header X-User-Id $user_id;
-proxy_set_header X-Role    $role;
-```
-
-### 4.5.4 RBAC Decorators trong Common Library
-
-```python
-# common/common/auth.py — Hệ thống phân quyền đầy đủ
-
-def require_auth(view_func):
-    """Yêu cầu đăng nhập — mọi role đều được phép"""
-    @functools.wraps(view_func)
-    def wrapper(view_instance, request, *args, **kwargs):
-        user_id, role, entity_id = _get_context_from_headers(request)
-        if not user_id:
-            return Response({"error": "Unauthorized"}, status=401)
-        _attach_context(request, user_id, role, entity_id)
-        return view_func(view_instance, request, *args, **kwargs)
-    return wrapper
-
-def require_customer(view_func):
-    """Chỉ customer — staff/manager không được dùng endpoint này"""
-    return _require_role(["customer"])(view_func)
-
-def require_staff(view_func):
-    """Yêu cầu staff, manager, hoặc admin"""
-    return _require_role(["staff", "manager", "admin"])(view_func)
-
-def require_manager(view_func):
-    """Chỉ manager và admin"""
-    return _require_role(["manager", "admin"])(view_func)
-
-def require_internal(fn):
-    """
-    Chỉ internal services — xác thực 4 lớp:
-    1. X-Internal-Token phải khớp
-    2. X-Service-Name phải trong whitelist
-    3. X-Timestamp không quá 30 giây cũ (chống Replay Attack)
-    4. X-Signature HMAC-SHA256 phải khớp (chống tampering)
-    """
-    # ... (đã trình bày chi tiết ở Chương 2) ...
-```
-
-**Ví dụ sử dụng trong views:**
-```python
-# order-service/order/views.py
-class OrderListCreateView(APIView):
-    @require_auth          # GET: mọi user đã đăng nhập
-    def get(self, request):
-        # ...
-
-    @require_customer      # POST: chỉ customer mới tạo đơn được
-    def post(self, request):
-        # ...
-
-class OrderDetailView(APIView):
-    @require_staff         # PUT: chỉ staff mới cập nhật trạng thái
-    def put(self, request, pk):
-        # ...
-
-class OrderMetricsView(APIView):
-    @require_internal      # GET: chỉ internal services
-    def get(self, request):
-        # ...
-```
-
-### 4.5.5 Token Refresh Flow
-
-```
-Client gửi POST /auth/refresh/ với {"refresh": "<refresh_token>"}
-         │
-         ▼
-    auth-service/authentication/views.py — RefreshView
-         │
-         ▼
-    TokenService.refresh_access(refresh_token)
-    ├── RefreshToken(refresh_token) — validate + check blacklist
-    ├── Nếu ROTATE_REFRESH_TOKENS=True → issue new refresh token
-    ├── Blacklist old refresh token (rest_framework_simplejwt.token_blacklist)
-    └── Trả về {"access": "<new_access_token>"}
-```
-
-**Cấu hình simplejwt:**
-```python
-# auth-service/auth_service/settings.py
-SIMPLE_JWT = {
-    "ALGORITHM": "HS256",
-    "SIGNING_KEY": os.environ.get("JWT_SECRET_KEY"),
-    "ACCESS_TOKEN_LIFETIME":  timedelta(minutes=1440),  # 24 giờ
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS":  True,   # Mỗi lần refresh → token mới
-    "BLACKLIST_AFTER_ROTATION": True, # Token cũ bị blacklist
-}
-```
-
-
----
-
-## 4.6 Giao tiếp Nội bộ — InternalClient với Circuit Breaker
-
-### 4.6.0 Sơ đồ Circuit Breaker State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> CLOSED : Khởi động
-
-    CLOSED --> CLOSED : Request thành công<br/>failures = 0
-    CLOSED --> OPEN : failures >= 3<br/>liên tiếp
-
-    OPEN --> OPEN : Request đến<br/>→ Từ chối ngay lập tức<br/>Exception thrown
-    OPEN --> HALF_OPEN : 15 giây trôi qua<br/>reset_timeout expired
-
-    HALF_OPEN --> CLOSED : 1 request thành công<br/>failures = 0
-    HALF_OPEN --> OPEN : 1 request thất bại<br/>reset timer
-
-    note right of CLOSED
-        Trạng thái bình thường
-        Cho phép tất cả requests
-        Lưu state trên Redis
-        Shared across Gunicorn workers
-    end note
-
-    note right of OPEN
-        Ngắt mạch
-        Trả lỗi ngay (không chờ timeout)
-        Ngăn Cascading Failure
-    end note
-
-    note right of HALF_OPEN
-        Thử nghiệm
-        Cho 1 request qua
-        Kiểm tra service đã phục hồi chưa
-    end note
-```
-
-*Hình 4.4: Circuit Breaker State Machine — 3 trạng thái lưu trên Redis*
-
-```mermaid
-sequenceDiagram
-    participant OS as Order Service
-    participant CB as Circuit Breaker (Redis)
-    participant PS as Product Service
-
-    Note over OS,PS: Scenario 1: CLOSED → OPEN
-    OS->>CB: _check_circuit("product-service:8000")
-    CB-->>OS: state=CLOSED, failures=0
-    OS->>PS: POST /internal/reserve-stock/
-    PS-->>OS: 500 Server Error
-    OS->>CB: _record_failure() → failures=1
-    OS->>PS: Retry 1 (backoff 0.5s)
-    PS-->>OS: 500 Server Error
-    OS->>CB: _record_failure() → failures=2
-    OS->>PS: Retry 2 (backoff 1s)
-    PS-->>OS: 500 Server Error
-    OS->>CB: _record_failure() → failures=3 → OPEN
-    OS-->>OS: Raise exception to caller
-
-    Note over OS,PS: Scenario 2: OPEN → HALF_OPEN → CLOSED
-    OS->>CB: _check_circuit() after 15s
-    CB-->>OS: state=HALF_OPEN
-    OS->>PS: POST /internal/reserve-stock/
-    PS-->>OS: 200 OK
-    OS->>CB: _record_success() → CLOSED, failures=0
-```
-
-*Hình 4.5: Circuit Breaker hoạt động — từ CLOSED qua OPEN đến phục hồi*
-
-### 4.6.1 Vấn đề của HTTP thuần túy
-
-Khi Order Service gọi Product Service để khóa tồn kho, nếu Product Service đang bị quá tải và không phản hồi trong 30 giây, Order Service sẽ bị block 30 giây. Nếu có 100 requests đồng thời, tất cả 100 threads đều bị block → Order Service cũng sập theo. Đây là hiện tượng **Cascading Failure**.
-
-Circuit Breaker Pattern giải quyết bằng cách "ngắt mạch" sau một số lần thất bại nhất định, trả về lỗi ngay lập tức thay vì chờ timeout.
-
-### 4.6.2 InternalClient — Circuit Breaker Redis-backed
-
-```python
-# common/common/client.py
-class CircuitState:
-    CLOSED    = "CLOSED"     # Bình thường — cho phép requests
-    OPEN      = "OPEN"       # Đã ngắt — từ chối tất cả requests
-    HALF_OPEN = "HALF_OPEN"  # Thử nghiệm — cho phép 1 request
-
-class InternalClient:
-    def __init__(self, timeout=2.0, max_retries=2):
-        self.timeout      = timeout
-        self.max_retries  = max_retries
-        self.service_name = os.environ.get("SERVICE_NAME", "unknown_service")
-        self.internal_token   = os.environ.get("INTERNAL_TOKEN", "internal-dev-token")
-        self.signing_secret   = os.environ.get("INTERNAL_SIGNING_SECRET", "internal-signing-secret")
-        self.fail_threshold   = 3   # Mở circuit sau 3 lần thất bại
-        self.reset_timeout    = 15  # Reset sau 15 giây
-
-    def _check_circuit(self, host: str):
-        """Đọc trạng thái circuit từ Redis — shared across workers"""
-        key = f"circuit:{host}"
-        data = cb_redis.get(key)
-        state = json.loads(data) if data else {
-            "status": CircuitState.CLOSED, "failures": 0, "last_failure_time": 0
-        }
-
-        if state["status"] == CircuitState.OPEN:
-            if time.time() - state["last_failure_time"] > self.reset_timeout:
-                state["status"] = CircuitState.HALF_OPEN
-                cb_redis.set(key, json.dumps(state), ex=60)
-            else:
-                raise Exception(f"Circuit Breaker OPEN for host {host}")
-        return state
-
-    def request(self, method: str, url: str, **kwargs) -> httpx.Response:
-        host = self._get_host(url)
-        cb_state = self._check_circuit(host)
-
-        # Serialize body và tạo HMAC signature
-        request_body = ""
-        if "json" in kwargs:
-            request_body = json.dumps(kwargs["json"], separators=(",", ":"), sort_keys=True)
-            kwargs["data"] = request_body
-            kwargs.pop("json", None)
-
-        headers = kwargs.pop("headers", {})
-        headers.update(self._get_headers(request_body))
-
-        attempt = 0
-        backoff  = 0.5  # Exponential backoff: 0.5s, 1s, 2s
-
-        with httpx.Client(timeout=self.timeout) as client:
-            while attempt <= self.max_retries:
-                start_time = time.time()
-                try:
-                    response = client.request(method, url, headers=headers, **kwargs)
-                    latency = int((time.time() - start_time) * 1000)
-
-                    # Log với structured metrics
-                    logger.info(f"InternalClient: {method} {url}", extra={
-                        "target_service": host,
-                        "endpoint": url,
-                        "status_code": response.status_code,
-                        "latency_ms": latency,
-                        "span": f"{self.service_name}->{host}"
-                    })
-
-                    if 500 <= response.status_code < 600:
-                        raise httpx.HTTPStatusError(
-                            f"Server error {response.status_code}",
-                            request=response.request, response=response
-                        )
-
-                    self._record_success(host, cb_state)
-                    return response
-
-                except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as e:
-                    self._record_failure(host, cb_state)
-                    attempt += 1
-                    if attempt > self.max_retries:
-                        raise e
-                    logger.warning(f"Retrying in {backoff}s...", extra={"target_service": host})
-                    time.sleep(backoff)
-                    backoff *= 2  # Exponential backoff
-```
-
-**Trạng thái Circuit Breaker:**
-
-```
-CLOSED (bình thường)
-    │ 3 lần thất bại liên tiếp
-    ▼
-OPEN (ngắt mạch — từ chối ngay lập tức)
-    │ 15 giây trôi qua
-    ▼
-HALF_OPEN (thử nghiệm — cho 1 request qua)
-    ├── Thành công → CLOSED
-    └── Thất bại  → OPEN (reset timer)
-```
-
-**Lý do lưu trạng thái trên Redis:** Gunicorn chạy 4 workers (4 processes riêng biệt). Nếu lưu circuit state trong memory của process, mỗi worker có state riêng — không nhất quán. Redis là shared state store, đảm bảo tất cả workers thấy cùng trạng thái circuit.
-
-### 4.6.3 HMAC Signature Generation
-
-```python
-# common/common/client.py
-def _generate_signature(self, timestamp: str, body: str) -> str:
-    return hmac.new(
-        self.signing_secret.encode("utf-8"),
-        f"{timestamp}.{body}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-
-def _get_headers(self, request_body: str = "") -> dict:
-    request_id = get_request_id() or "unknown-req-id"
-    timestamp  = str(int(time.time()))
-    signature  = self._generate_signature(timestamp, request_body)
-    return {
-        "X-Request-ID":     request_id,
-        "X-Trace-ID":       request_id,   # Distributed tracing alias
-        "X-Service-Name":   self.service_name,
-        "X-Timestamp":      timestamp,
-        "X-Signature":      signature,
-        "X-Internal-Token": self.internal_token,
-        "Content-Type":     "application/json"
-    }
-```
-
-Mỗi internal request mang đầy đủ 6 headers bảo mật. Receiving service xác thực tất cả 6 headers trước khi xử lý.
-
-
----
-
-## 4.7 Event-Driven Architecture — RabbitMQ và Outbox Pattern
-
-### 4.7.0 Sơ đồ RabbitMQ Topology và Event Flow
-
-```mermaid
-graph LR
-    subgraph PRODUCERS["📤 Event Producers"]
-        OW[order-outbox-worker]
-        POW[payment-outbox-worker]
-    end
-
-    subgraph EXCHANGES["🔀 RabbitMQ Exchanges"]
-        OE[order_events<br/>fanout exchange]
-        PE[payment_events<br/>fanout exchange]
-        DLX[dlx<br/>direct exchange]
-    end
-
-    subgraph QUEUES["📬 Queues"]
-        POQ[payment_order_consumer<br/>durable, DLX-enabled]
-        DLQ[dlq<br/>Dead Letter Queue]
-    end
-
-    subgraph CONSUMERS["📥 Event Consumers"]
-        PC[payment-consumer<br/>consume_orders.py]
-        DLQC[dlq-consumer<br/>consume_dlq.py]
-    end
-
-    subgraph STORAGE["🗄️ Storage"]
-        PAY_DB[(pay_db<br/>Payment + PaymentOutbox)]
-        DLQ_DB[(pay_db<br/>DLQEvent table)]
-    end
-
-    OW -->|Publish order_created| OE
-    POW -->|Publish payment_completed| PE
-    OE -->|Bind| POQ
-    POQ -->|NACK requeue=False| DLX
-    DLX -->|Route dlq| DLQ
-    POQ --> PC
-    DLQ --> DLQC
-    PC --> PAY_DB
-    DLQC --> DLQ_DB
-
-    style PRODUCERS fill:#1a1a2e,color:#e8e8f0
-    style EXCHANGES fill:#0f3460,color:#e8e8f0
-    style QUEUES fill:#533483,color:#e8e8f0
-    style CONSUMERS fill:#2d132c,color:#e8e8f0
-    style STORAGE fill:#16213e,color:#e8e8f0
-```
-
-*Hình 4.6: RabbitMQ topology — fanout exchanges, DLQ, và consumer workers*
-
-```mermaid
-flowchart TD
-    subgraph PROBLEM["❌ Vấn đề Dual-Write (không dùng Outbox)"]
-        P1[Service ghi DB] --> P2[Service gọi RabbitMQ publish]
-        P2 -->|Mạng đứt / crash| P3[DB có data<br/>Event KHÔNG được publish]
-        P3 --> P4[💥 Inconsistency]
-    end
-
-    subgraph SOLUTION["✅ Giải pháp Outbox Pattern"]
-        S1[BEGIN TRANSACTION] --> S2[INSERT business data]
-        S2 --> S3[INSERT outbox event<br/>status=PENDING]
-        S3 --> S4[COMMIT — atomic]
-        S4 --> S5{Worker polls<br/>every 0.5s}
-        S5 --> S6[SELECT FOR UPDATE<br/>WHERE status=PENDING]
-        S6 --> S7[Publish to RabbitMQ]
-        S7 -->|Success| S8[UPDATE status=PUBLISHED]
-        S7 -->|Fail| S9[retry_count++<br/>≥5 → FAILED]
-        S9 --> S5
-    end
-
-    style PROBLEM fill:#2d132c,color:#e8e8f0
-    style SOLUTION fill:#0f3460,color:#e8e8f0
-    style P4 fill:#ff6b6b,color:#fff
-    style S8 fill:#00d9a3,color:#000
-```
-
-*Hình 4.7: Outbox Pattern giải quyết Dual-Write Problem*
-
-### 4.7.1 Topology RabbitMQ
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    RABBITMQ TOPOLOGY                            │
-│                                                                 │
-│  order_events (fanout exchange)                                 │
-│  ├── payment_order_consumer queue ──→ payment-consumer worker   │
-│  └── (future: analytics queue)                                  │
-│                                                                 │
-│  payment_events (fanout exchange)                               │
-│  └── (future: shipping_queue, notification_queue)               │
-│                                                                 │
-│  dlx (direct exchange — Dead Letter)                            │
-│  └── dlq queue ──→ dlq-consumer worker ──→ DLQEvent DB          │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Fanout Exchange:** Mỗi message được broadcast tới tất cả queues đang bind vào exchange. Khi thêm service mới cần lắng nghe `order_events`, chỉ cần tạo queue mới và bind — không cần sửa code publisher.
-
-**Dead Letter Exchange (DLX):** Khi consumer xử lý thất bại và gọi `basic_nack(requeue=False)`, RabbitMQ tự động chuyển message sang DLX → DLQ. Worker `dlq-consumer` lưu vào bảng `DLQEvent` để phân tích sau.
-
-### 4.7.2 EventPublisher — Chuẩn hóa Event Schema
-
-```python
-# common/common/events.py
-class EventPublisher:
-    _connection = None
-    _channel    = None
-
-    @classmethod
-    def get_channel(cls):
-        if not cls._connection or cls._connection.is_closed:
-            host = os.environ.get("RABBITMQ_HOST", "rabbitmq")
-            user = os.environ.get("RABBITMQ_USER", "user")
-            pwd  = os.environ.get("RABBITMQ_PASS", "password")
-
-            credentials = pika.PlainCredentials(user, pwd)
-            parameters  = pika.ConnectionParameters(
-                host=host,
-                credentials=credentials,
-                heartbeat=600,                  # Giữ connection sống
-                blocked_connection_timeout=300  # Timeout khi RabbitMQ bị block
-            )
-            cls._connection = pika.BlockingConnection(parameters)
-            cls._channel    = cls._connection.channel()
-            cls._setup_topology()
-
-        if cls._channel.is_closed:
-            cls._channel = cls._connection.channel()
-        return cls._channel
-
-    @classmethod
-    def _setup_topology(cls):
-        channel = cls._channel
-        # Dead Letter Exchange
-        channel.exchange_declare(exchange='dlx', exchange_type='direct', durable=True)
-        channel.queue_declare(queue='dlq', durable=True)
-        channel.queue_bind(queue='dlq', exchange='dlx', routing_key='dlq')
-        # Business Exchanges
-        channel.exchange_declare(exchange='order_events',   exchange_type='fanout', durable=True)
-        channel.exchange_declare(exchange='payment_events', exchange_type='fanout', durable=True)
-
-    @classmethod
-    def publish(cls, exchange: str, event_type: str, data: dict, version: int = 1):
-        """
-        Enterprise Event Schema chuẩn hóa:
-        {event_type, version, data, trace_id, timestamp}
-        """
-        trace_id = get_request_id() or "unknown"
-        payload  = {
-            "event_type": event_type,
-            "version":    version,
-            "data":       data,
-            "trace_id":   trace_id,
-            "timestamp":  datetime.now(timezone.utc).isoformat()
-        }
-        channel = cls.get_channel()
-        channel.basic_publish(
-            exchange=exchange,
-            routing_key="",   # fanout — không cần routing key
-            body=json.dumps(payload),
-            properties=pika.BasicProperties(
-                delivery_mode=2,  # Persistent — lưu xuống disk
-                headers={
-                    "trace_id": trace_id,
-                    "span": f"{os.environ.get('SERVICE_NAME','unknown')}->{exchange}"
-                }
-            )
-        )
-        logger.info(f"Published event {event_type} to {exchange}", extra={
-            "trace_id": trace_id,
-            "event_type": event_type
-        })
-```
-
-### 4.7.3 Outbox Pattern — Đảm bảo At-least-once Delivery
-
-**Vấn đề Dual-Write:** Nếu service ghi DB thành công rồi gọi RabbitMQ publish, nhưng mạng đứt giữa chừng → DB có dữ liệu nhưng event không được publish → inconsistency.
-
-**Giải pháp Outbox:** Ghi DB + Outbox event trong cùng 1 transaction. Worker riêng đọc Outbox và publish lên RabbitMQ.
-
-```python
-# common/common/outbox.py
-class AbstractOutboxEvent(models.Model):
-    aggregate_id  = models.CharField(max_length=255)
-    event_type    = models.CharField(max_length=255)
-    payload       = models.JSONField()
-    status        = models.CharField(max_length=20, default="PENDING")
-    # PENDING → PUBLISHED (thành công)
-    # PENDING → FAILED (sau 5 lần retry)
-    created_at    = models.DateTimeField(auto_now_add=True)
-    published_at  = models.DateTimeField(null=True, blank=True)
-    retry_count   = models.IntegerField(default=0)
-    error_message = models.TextField(blank=True)
-
-    class Meta:
-        abstract = True  # Mỗi service kế thừa và tạo bảng riêng
-```
-
-**Hai bảng Outbox trong hệ thống:**
-- `order_outbox` (order-service) — events: `order_created`
-- `payment_outbox` (payment-service) — events: `payment_completed`
-
-**Relay Worker — đọc Outbox và publish:**
-
-```python
-# order-service/order/management/commands/relay_outbox.py
-class Command(BaseCommand):
-    def handle(self, *args, **options):
-        while True:
-            # Poll 50 events PENDING mỗi 0.5 giây
-            events = OrderOutbox.objects.filter(
-                status="PENDING"
-            ).order_by("created_at")[:50]
-
-            if not events:
-                time.sleep(2)
-                continue
-
-            for event in events:
-                with transaction.atomic():
-                    # select_for_update — tránh 2 workers xử lý cùng event
-                    e = OrderOutbox.objects.select_for_update().get(id=event.id)
-                    if e.status != "PENDING":
-                        continue
-
-                    try:
-                        EventPublisher.publish(
-                            exchange="order_events",
-                            event_type=e.event_type,
-                            data=e.payload,
-                            version=1
-                        )
-                        e.status       = "PUBLISHED"
-                        e.published_at = now()
-                        e.save(update_fields=["status", "published_at"])
-                    except Exception as err:
-                        e.retry_count   += 1
-                        e.error_message  = str(err)[:500]
-                        if e.retry_count >= 5:
-                            e.status = "FAILED"
-                        e.save(update_fields=["retry_count", "error_message", "status"])
-
-            time.sleep(0.5)
-```
-
-### 4.7.4 Payment Consumer — Xử lý Sự kiện Bất đồng bộ
-
-```python
-# payment-service/payment/management/commands/consume_orders.py
-def callback(ch, method, properties, body):
-    try:
-        payload    = json.loads(body)
-        event_type = payload.get("event_type")
-
-        if event_type == "order_created":
-            data     = payload.get("data", {})
-            order_id = data.get("order_id")
-            amount   = float(data.get("total_amount", 0))
-
-            # Idempotency — tránh xử lý 2 lần nếu message bị requeue
-            if Payment.objects.filter(order_id=order_id).exists():
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-                return
-
-            with transaction.atomic():
-                payment = Payment.objects.create(
-                    order_id=order_id,
-                    payment_amount=amount,
-                    payment_status=PaymentStatus.COMPLETED,
-                    shipping_status=ShippingStatus.PENDING
-                )
-                # Ghi PaymentOutbox để trigger shipping
-                PaymentOutbox.objects.create(
-                    aggregate_id=str(payment.id),
-                    event_type="payment_completed",
-                    payload={
-                        "payment_id": payment.id,
-                        "order_id":   order_id,
-                        "amount":     str(amount),
-                    }
-                )
-
-        # ACK — báo RabbitMQ đã xử lý thành công
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-
-    except Exception as e:
-        logger.error(f"Error processing order event: {e}")
-        # NACK + requeue=False → message vào DLQ
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-```
-
-### 4.7.5 DLQ Consumer — Xử lý Message Thất bại
-
-```python
-# payment-service/payment/management/commands/consume_dlq.py
-def on_dlq_message(ch, method, properties, body):
-    payload    = json.loads(body.decode('utf-8', errors='replace'))
-    event_type = payload.get("event_type", "unknown")
-    data       = payload.get("data", {})
-    order_id   = data.get("order_id", "unknown") if isinstance(data, dict) else "unknown"
-
-    logger.error(
-        "DLQ message received: event_type=%s, order_id=%s",
-        event_type, order_id,
-        extra={"event_type": event_type, "order_id": order_id, "body": payload}
-    )
-
-    # Lưu vào DB để phân tích và replay thủ công sau
-    DLQEvent.objects.create(
-        queue_name="dlq",
-        exchange=getattr(method, 'exchange', ''),
-        routing_key=getattr(method, 'routing_key', ''),
-        body=payload,
-        error_message=f"event_type={event_type}, order_id={order_id}",
-    )
-
-    ch.basic_ack(delivery_tag=method.delivery_tag)
-```
-
-
----
-
-## 4.8 Luồng Giao dịch End-to-End
-
-### 4.8.0 Sơ đồ Tổng quan Luồng Mua hàng
-
-```mermaid
-flowchart TD
-    subgraph STEP1["1️⃣ Đăng nhập"]
-        A1([Client]) -->|POST /auth/login/| A2[auth-service]
-        A2 -->|JWT tokens| A1
-    end
-
-    subgraph STEP2["2️⃣ Duyệt sản phẩm"]
-        B1([Client]) -->|GET /products/| B2[API Gateway]
-        B2 -->|Parallel| B3[product-service<br/>Redis cache]
-        B2 -->|Parallel| B4[recommender-ai<br/>ALS + BiLSTM]
-        B2 -->|Fire & forget 0.5s| B5[Track: view/click]
-    end
-
-    subgraph STEP3["3️⃣ Thêm vào giỏ"]
-        C1([Client]) -->|POST /carts/15/items/| C2[API Gateway]
-        C2 --> C3[cart-service<br/>get_or_create CartItem]
-        C2 -->|Fire & forget| C4[Track: add_to_cart]
-    end
-
-    subgraph STEP4["4️⃣ Checkout"]
-        D1([Client]) -->|POST /cart/15/checkout/| D2[API Gateway]
-        D2 -->|GET /carts/15/| D3[cart-service]
-        D2 -->|POST /orders/| D4[order-service]
-        D4 -->|POST /internal/reserve-stock/ HMAC| D5[product-service<br/>SELECT FOR UPDATE]
-        D4 -->|INSERT| D6[OrderOutbox PENDING]
-        D2 -->|DELETE /carts/15/| D3
-    end
-
-    subgraph STEP5["5️⃣ Thanh toán"]
-        E1([Client]) -->|POST /payments/| E2[API Gateway]
-        E2 --> E3[payment-service<br/>idempotent]
-        E3 -->|INSERT| E4[PaymentOutbox PENDING]
-        E2 -->|Fire & forget| E5[Track: purchase]
-    end
-
-    subgraph STEP6["6️⃣ Async Event Flow"]
-        F1[order-outbox-worker] -->|Publish order_created| F2[RabbitMQ]
-        F3[payment-outbox-worker] -->|Publish payment_completed| F2
-        F2 -->|Consume| F4[payment-consumer]
-        F2 -->|Retry shipping| F5[shipping-service<br/>PENDING → PROCESSING]
-    end
-
-    STEP1 --> STEP2 --> STEP3 --> STEP4 --> STEP5 --> STEP6
-
-    style STEP1 fill:#1a1a2e,color:#e8e8f0
-    style STEP2 fill:#16213e,color:#e8e8f0
-    style STEP3 fill:#0f3460,color:#e8e8f0
-    style STEP4 fill:#533483,color:#e8e8f0
-    style STEP5 fill:#2d132c,color:#e8e8f0
-    style STEP6 fill:#16213e,color:#e8e8f0
-```
-
-*Hình 4.8: Tổng quan luồng mua hàng 6 bước qua toàn bộ hệ thống*
-
-### 4.8.1 Kịch bản: Khách hàng mua sách
-
-Đây là luồng phức tạp nhất của hệ thống, đi qua 7 services và 2 message queues:
-
-```
-Bước 1: Đăng nhập
-Client → NGINX → auth-service
-  POST /auth/login/ {username, password}
-  ← {access_token, refresh_token, user: {id, role, entity_id}}
-  API Gateway lưu tokens vào Redis session
-
-Bước 2: Duyệt sản phẩm
-Client → NGINX → API Gateway → product-service
-  GET /products/?page=1&page_size=10
-  product-service kiểm tra Redis cache
-  ← Danh sách sản phẩm (từ cache hoặc PostgreSQL)
-  API Gateway gọi recommender-ai-service song song để lấy gợi ý
-
-Bước 3: Xem chi tiết sản phẩm
-Client → API Gateway → product-service
-  GET /products/42/
-  API Gateway track behavior: "view", "click" → recommender-ai-service
-
-Bước 4: Thêm vào giỏ hàng
-Client → API Gateway → cart-service
-  POST /carts/15/items/ {product_id: 42, quantity: 2}
-  cart-service: get_or_create Cart(customer_id=15)
-  cart-service: get_or_create CartItem(cart, product_id=42)
-  API Gateway track behavior: "add_to_cart" → recommender-ai-service
-
-Bước 5: Checkout
-Client → API Gateway
-  POST /cart/15/checkout/
-  API Gateway:
-    1. GET cart-service /carts/15/ → lấy items
-    2. POST order-service /orders/ {customer_id:15, items:[...]}
-       order-service:
-         a. Tạo Order(status=PENDING_PAYMENT) + OrderItems
-         b. POST product-service /internal/reserve-stock/ (HMAC signed)
-            product-service: SELECT FOR UPDATE, trừ stock
-         c. Tạo OrderOutbox(event_type="order_created")
-         ← {id: 1024, status: "pending_payment", total_amount: 250000}
-    3. DELETE cart-service /carts/15/ → xóa giỏ hàng
-  ← Redirect đến /orders/1024/pay/
-
-Bước 6: Thanh toán
-Client → API Gateway → payment-service
-  POST /payments/ {order_id: 1024, payment_amount: 250000, payment_method_id: 1}
-  payment-service:
-    a. get_or_create Payment(order_id=1024) — idempotency
-    b. payment_status = "completed"
-    c. Tạo Transaction(type="payment", value=250000)
-    d. Tạo PaymentOutbox(event_type="payment_completed")
-  ← {id: 88, payment_status: "completed", transaction_ref: "abc123"}
-  API Gateway track behavior: "purchase" → recommender-ai-service
-
-Bước 7: Async — Order Outbox Relay
-order-outbox-worker:
-  Poll OrderOutbox WHERE status="PENDING"
-  EventPublisher.publish(exchange="order_events", event_type="order_created",
-                          data={order_id:1024, total_amount:"250000"})
-  OrderOutbox.status = "PUBLISHED"
-
-Bước 8: Async — Payment Consumer
-payment-consumer:
-  Nhận message từ order_events queue
-  event_type == "order_created" → đã có Payment rồi (idempotency check)
-  basic_ack()
-
-Bước 9: Async — Payment Outbox Relay
-payment-outbox-worker:
-  Poll PaymentOutbox WHERE status="PENDING"
-  EventPublisher.publish(exchange="payment_events", event_type="payment_completed",
-                          data={payment_id:88, order_id:1024})
-  PaymentOutbox.status = "PUBLISHED"
-
-Bước 10: Async — Shipping Creation
-payment-worker (retry_failed_shipping):
-  Gọi shipping-service /internal/shipping/create/ {order_id: 1024}
-  shipping-service:
-    get_or_create Shipping(order_id=1024, status=PENDING)
-    Tạo ShippingStatus(status=PENDING, description="Shipping request received.")
-  Payment.shipping_status = "processing"
-```
-
-### 4.8.2 Sequence Diagram Tổng thể
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Khách hàng
-    participant GW as API Gateway (BFF)
-    participant Auth as Auth Service
-    participant Prod as Product Service
-    participant Cart as Cart Service
-    participant Order as Order Service
-    participant Pay as Payment Service
-    participant Ship as Shipping Service
+    participant U as User
+    participant GW as api-gateway
+    participant C as cart-service
+    participant US as user-service
+    participant SH as shipping-service
+    participant O as order-service
+    participant P as product-service
+    participant PAY as payment-service
     participant MQ as RabbitMQ
-    participant Rec as Recommender AI
 
-    Note over User, Auth: ĐĂNG NHẬP
-    User->>GW: POST /login/ {username, password}
-    GW->>Auth: POST /auth/login/
-    Auth-->>GW: {access_token, refresh_token, user}
-    GW-->>User: Redirect /home/ (session lưu token)
-
-    Note over User, Prod: DUYỆT SẢN PHẨM
-    User->>GW: GET /products/42/
-    par Parallel calls
-        GW->>Prod: GET /products/42/ (cache_ttl=30s)
-        GW->>Rec: GET /recommendations/15/?limit=6
-    end
-    GW->>Rec: POST /api/recommender/events/ {action:"view"}
-    GW-->>User: Render product_detail.html
-
-    Note over User, Cart: THÊM VÀO GIỎ
-    User->>GW: POST /products/42/ {quantity:2}
-    GW->>Cart: POST /carts/15/items/ {product_id:42, quantity:2}
-    Cart-->>GW: Cart updated
-    GW->>Rec: POST /events/ {action:"add_to_cart"}
-    GW-->>User: Redirect /cart/15/
-
-    Note over User, Order: CHECKOUT
-    User->>GW: POST /cart/15/checkout/
-    GW->>Cart: GET /carts/15/
-    Cart-->>GW: {items:[{product_id:42, quantity:2, unit_price:125000}]}
-    GW->>Order: POST /orders/ {customer_id:15, items:[...]}
-    Order->>Prod: POST /internal/reserve-stock/ (HMAC signed)
-    Prod-->>Order: 200 OK (stock reserved)
-    Order-->>GW: {id:1024, status:"pending_payment"}
-    GW->>Cart: DELETE /carts/15/
-    GW-->>User: Redirect /orders/1024/pay/
-
-    Note over User, Pay: THANH TOÁN
-    User->>GW: POST /orders/1024/pay/ {payment_method_id:1}
-    GW->>Pay: POST /payments/ {order_id:1024, amount:250000}
-    Pay-->>GW: {payment_status:"completed"}
-    GW->>Rec: POST /events/ {action:"purchase"}
-    GW-->>User: Redirect /orders/ (thành công)
-
-    Note over MQ, Ship: ASYNC — EVENT PROPAGATION
-    Order->>MQ: Publish order_created (via Outbox)
-    Pay->>MQ: Publish payment_completed (via Outbox)
-    MQ->>Ship: payment_completed → create Shipping
-    Ship-->>MQ: ACK
+    U->>GW: POST /cart/{id}/checkout/
+    GW->>C: GET /carts/{id}/
+    GW->>US: GET addresses
+    GW->>SH: POST /api/shipping/calculate-fee/
+    GW->>O: POST /orders/
+    O->>P: POST /internal/reserve-stock/
+    O-->>GW: order_id
+    GW->>C: DELETE /carts/{id}/
+    GW-->>U: redirect /orders/{id}/pay/
+    U->>GW: POST pay (COD)
+    GW->>PAY: POST /payments/
+    PAY->>MQ: payment.confirmed
+    GW->>REC: track purchase events
 ```
 
+**Phân tích:** Storefront dùng luồng **legacy** `POST order-service/orders/`, không gọi SAGA `POST /api/v1/orders/checkout/` của `catalog-service` + `inventory-service`. Đây là điểm quan trọng khi đối chiếu Chương 2 với triển khai thực tế.
 
----
+### Nhận xét mục 4.2
 
-## 4.9 Cấu hình Môi trường — Environment Variables
+Kiến trúc triển khai là **BFF + microservices + AI sidecar**. AI không nằm trong critical path đặt hàng nhưng ảnh hưởng trải nghiệm (gợi ý, chat, behavior tracking).
 
-### 4.9.1 File .env và .env.example
+## 4.3 CẤU TRÚC SOURCE CODE
 
-Dự án sử dụng pattern `.env` / `.env.example` chuẩn. File `.env` chứa giá trị thực và bị gitignore, `.env.example` là template cho developer mới:
+### 4.3.1 Tổng quan monorepo
 
-```bash
-# .env.example — Template cấu hình
-
-# ── PostgreSQL ──────────────────────────────────────────────────
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres        # ⚠️ Đổi thành password mạnh khi deploy
-POSTGRES_DB=postgres
-POSTGRES_PORT=5432
-
-# ── JWT ─────────────────────────────────────────────────────────
-# Phải GIỐNG NHAU ở tất cả services
-# Tạo key: python -c "import secrets; print(secrets.token_hex(32))"
-JWT_SECRET_KEY=ecommerce-super-secret-jwt-2026
-
-# ── Django Secret Keys (mỗi service dùng key riêng) ─────────────
-SECRET_KEY_PRODUCT=product-service-change-me-in-production
-SECRET_KEY_CART=cart-service-change-me-in-production
-SECRET_KEY_ORDER=order-service-change-me-in-production
-SECRET_KEY_PAY=pay-service-change-me-in-production
-SECRET_KEY_SHIP=ship-service-change-me-in-production
-SECRET_KEY_RECOMMENDER=recommender-change-me-in-production
-SECRET_KEY_GATEWAY=api-gateway-change-me-in-production
-
-# ── Database names (Database per Service) ───────────────────────
-DB_HOST=host.docker.internal
-DB_PORT=5432
-DB_NAME_PRODUCT=product_db
-DB_NAME_CART=cart_db
-DB_NAME_ORDER=order_db
-DB_NAME_PAY=pay_db
-DB_NAME_SHIP=ship_db
-DB_NAME_RECOMMENDER=recommender_db
-
-# ── Internal Security ────────────────────────────────────────────
-INTERNAL_TOKEN=internal-dev-token
-INTERNAL_SIGNING_SECRET=internal-signing-secret
-INTERNAL_SIGNATURE_TOLERANCE=30
-INTERNAL_ALLOWED_SERVICES=auth-service,order-service,payment-service,
-  product-service,cart-service,shipping-service,user-service,recommender-ai-service
-
-# ── AI / LLM ─────────────────────────────────────────────────────
-GROQ_API_KEY=gsk_...
-GROQ_MODEL=llama-3.1-8b-instant
-GROQ_API_URL=https://api.groq.com/openai/v1/chat/completions
-
-# ── Neo4j ────────────────────────────────────────────────────────
-NEO4J_URI=bolt://neo4j:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password123
-
-# ── Debug ────────────────────────────────────────────────────────
-DEBUG=True   # Đặt False khi deploy production
-```
-
-### 4.9.2 Biến môi trường quan trọng theo service
-
-| Biến | Services sử dụng | Mô tả |
-|---|---|---|
-| `JWT_SECRET_KEY` | Tất cả | Khóa ký JWT — phải giống nhau |
-| `INTERNAL_TOKEN` | Tất cả | Token xác thực internal calls |
-| `INTERNAL_SIGNING_SECRET` | Tất cả | Khóa HMAC signature |
-| `INTERNAL_ALLOWED_SERVICES` | Tất cả | Whitelist service names |
-| `DB_HOST`, `DB_NAME` | Mỗi service | Kết nối PostgreSQL riêng |
-| `RABBITMQ_HOST/USER/PASS` | payment-service, workers | Kết nối RabbitMQ |
-| `REDIS_URL` | api-gateway, product-service | Kết nối Redis |
-| `GROQ_API_KEY` | recommender-ai-service | Groq LLM API |
-| `NEO4J_URI/USER/PASSWORD` | recommender-ai-service | Neo4j graph DB |
-| `SERVICE_NAME` | Tất cả | Tên service cho logging/tracing |
-
-### 4.9.3 Bảo mật Secrets trong Production
-
-Trong môi trường production, không nên lưu secrets trong file `.env`. Các phương án thay thế:
-
-1. **Docker Secrets:** `docker secret create jwt_key ./jwt_key.txt`
-2. **Kubernetes Secrets:** `kubectl create secret generic jwt-secret --from-literal=key=...`
-3. **AWS Secrets Manager / HashiCorp Vault:** Cho môi trường cloud enterprise
-
-Dự án hiện tại dùng `.env` file phù hợp cho môi trường development và demo. Khi chuyển sang production, cần thay thế bằng một trong các phương án trên.
-
----
-
-## 4.10 Hệ thống Giám sát và Observability
-
-### 4.10.1 Distributed Tracing với Jaeger
-
-Hệ thống tích hợp Jaeger (port 16686) để thu thập và hiển thị distributed traces. `X-Request-ID` được truyền qua tất cả services như `trace_id`, cho phép theo dõi một request từ đầu đến cuối:
+Repository `e-commerce` tổ chức theo **monorepo microservice**: mỗi thư mục top-level là một service độc lập có `Dockerfile`, `requirements.txt`, `manage.py` (Django) hoặc FastAPI.
 
 ```
-Request ID: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-
-NGINX (0ms)
-  └── api-gateway (2ms)
-        ├── product-service (45ms) ← cache miss, query DB
-        └── recommender-ai-service (120ms) ← ALS inference
-              └── order-service (8ms) ← get customer orders
+e-commerce/
+├── api-gateway/          # BFF + storefront templates
+├── auth-service/
+├── user-service/
+├── product-service/      # Catalog storefront (legacy)
+├── catalog-service/      # Catalog v2 (SAGA)
+├── inventory-service/    # Tồn kho v2
+├── cart-service/
+├── order-service/
+├── payment-service/
+├── shipping-service/
+├── promotion-service/
+├── interaction-service/  # Review, wishlist, tickets
+├── notification-service/
+├── recommender-ai-service/  # AI: RAG + recommender + Neo4j
+├── common/               # Shared auth client, middleware
+├── nginx/
+├── scripts/              # E2E test, seed
+├── docker-compose.yml
+└── docs/                 # Tài liệu đồ án
 ```
 
-### 4.10.2 RabbitMQ Management UI
+### 4.3.2 Vai trò từng thư mục chính
 
-Truy cập `http://localhost:15672` (user: `user`, pass: `password`) để:
-- Xem số lượng messages trong mỗi queue
-- Monitor consumer throughput
-- Xem Dead Letter Queue và replay messages
-- Kiểm tra exchange bindings
+#### api-gateway/
 
-### 4.10.3 Structured Logging — Metrics Extraction
+| Thư mục / file | Vai trò |
+|----------------|---------|
+| `gateway/views.py` | Logic BFF: login, home, checkout, AI proxy (~2200 dòng) |
+| `gateway/urls.py` | Route storefront (~98 paths) |
+| `gateway/behavior_tracking.py` | Gửi event tới recommender + interaction |
+| `gateway/admin_views.py` | Portal quản trị |
+| `gateway/staff_views.py` | Portal nhân viên |
+| `templates/` | HTML Django (home, checkout, product_detail...) |
+| `static/` | CSS, JS (infinite scroll, chatbot widget embed) |
 
-Mỗi `InternalClient` request tự động log metrics:
+**Vì sao BFF tách riêng:** Tránh CORS, gom nhiều API, giữ session server-side, render SEO-friendly HTML. Khách hàng không cần SPA phức tạp.
+
+#### recommender-ai-service/
+
+| Thư mục | Vai trò |
+|---------|---------|
+| `app/views/` | API: recommendations, chat, events |
+| `app/services/` | `recommender_service.py`, `graph/`, pipeline |
+| `app/repositories/` | Truy vấn `recommender_db` |
+| `rag/` | `hybrid_retriever.py`, `rag_llm.py`, `intent_router.py` |
+| `app/management/commands/` | `build_catalog_index`, `train_implicit_cf_local` |
+| `static/` | `chatbot-widget.js` |
+
+#### common/
+
+Thư viện dùng chung: `InternalClient` ký HMAC request nội bộ, middleware xác thực service-to-service. Tránh copy-paste auth logic 14 lần.
+
+### 4.3.3 Cấu trúc điển hình một microservice Django
+
+Mỗi `*-service/` tuân pattern:
+
+```
+*-service/
+├── Dockerfile
+├── entrypoint.sh       # migrate + seed + runserver/gunicorn
+├── manage.py
+├── *_service/
+│   ├── settings.py     # DB, RabbitMQ, Redis env
+│   ├── urls.py
+│   └── wsgi.py
+└── <app_name>/
+    ├── models.py
+    ├── views.py / viewsets
+    ├── serializers.py
+    ├── urls.py
+    ├── services.py     # business logic
+    └── migrations/
+```
+
+**Ưu điểm:**
+- Service độc lập deploy, scale, migrate DB riêng
+- Lỗi một service không sập toàn bộ (circuit breaker ở gateway qua timeout/retry)
+- Team có thể phân công theo domain
+
+**Hạn chế:**
+- Phức tạp vận hành (40+ container trong `docker-compose.yml`)
+- Distributed transaction cần SAGA/outbox (đã có code v2, storefront chưa dùng hết)
+
+### 4.3.4 Luồng import và phụ thuộc
+
+- **Gateway → Services:** HTTP sync qua `SERVICE_URLS` trong `settings.py`
+- **Services → Services:** Internal endpoints (`/internal/...`) + HMAC headers
+- **Services → RabbitMQ:** Outbox pattern (`payment-outbox-worker`, `order-outbox-worker`)
+- **recommender-consumer:** Nghe event, cập nhật Neo4j + behavior
+- **AI → product-service:** Hydrate metadata sản phẩm khi recommend/chat
+
+### Nhận xét mục 4.3
+
+Cấu trúc source phản ánh **domain-driven decomposition**. Storefront tập trung ở `api-gateway`; AI tập trung ở `recommender-ai-service` — ranh giới rõ, dễ mở rộng.
+
+## 4.4 CÔNG NGHỆ SỬ DỤNG
+
+> Chỉ liệt kê công nghệ **có trong source code**. Công nghệ không tìm thấy được ghi rõ.
+
+### 4.4.1 Frontend — Django Templates + Vanilla JavaScript
+
+| Công nghệ | Vai trò | Lý do chọn | Tích hợp | Ưu điểm | Hạn chế |
+|-----------|---------|------------|----------|---------|---------|
+| **Django Templates** | Render HTML server-side | Gateway đã là Django; không cần thêm build toolchain SPA | `render(request, "home.html", ctx)` trong `views.py` | SEO tốt, session đơn giản, ít dependency JS | UX động kém hơn React |
+| **Vanilla JS** | Infinite scroll, AJAX voucher/shipping | Tránh webpack phức tạp cho đồ án | `static/js/`, fetch `/api/home/products/` | Nhẹ, không lock-in framework | Khó maintain UI lớn |
+
+**ReactJS / NextJS / VueJS:** Không tìm thấy trong source code dự án. Frontend thực tế là Django Templates.
+
+### 4.4.2 Backend — Django + Django REST Framework
+
+| Công nghệ | Vai trò | Lý do | Tích hợp |
+|-----------|---------|-------|----------|
+| **Django 4.x** | Framework chính 14+ service | Mature ORM, admin, ecosystem | Mỗi service `manage.py` |
+| **Django REST Framework** | REST API | Serializer, ViewSet, pagination | `order-service`, `interaction-service`, `catalog-service`... |
+| **Gunicorn** | WSGI production | Entrypoint container | `entrypoint.sh` |
+
+**FastAPI:** Không dùng cho core commerce. AI service cũng là Django (không phải FastAPI).
+
+### 4.4.3 Database — PostgreSQL
+
+| Công nghệ | Vai trò | Lý do | Tích hợp |
+|-----------|---------|-------|----------|
+| **PostgreSQL 15** | Primary DB mỗi service | ACID, JSON field, mature | 14 container `*-db` trong compose |
+| **Redis 7** | Cache session gateway, order lock | Nhanh, ephemeral | `redis`, `order-redis` |
+
+**MySQL / SQLite:** Không dùng production (chỉ có thể test local đơn lẻ).
+
+### 4.4.4 Message Queue — RabbitMQ
+
+| Vai trò | Lý do | Tích hợp |
+|---------|-------|----------|
+| Async: payment → shipping, order events → AI | Tách synchronous checkout khỏi side-effect | `payment-consumer`, `recommender-consumer`, outbox workers |
+
+### 4.4.5 AI & ML
+
+| Công nghệ | Vai trò | File tham chiếu | Ghi chú |
+|-----------|---------|-----------------|---------|
+| **Sentence Transformers** | Embedding catalog | `hybrid_retriever.py`, `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` |
+| **scikit-learn** | TF-IDF, TruncatedSVD, cosine | `hybrid_retriever.py` | Sparse + dense hybrid |
+| **Groq API** | LLM chatbot | `rag/rag_llm.py` | Cần `GROQ_API_KEY` |
+| **implicit / ALS** | Collaborative filtering | `implicit_cf_engine.py` | Matrix factorization |
+| **BiLSTM** | Next-action prediction | `behavior_prediction_service.py` | Artifact pickle |
+| **NetworkX** | Graph KB fallback | `rag_llm.py` | Khi Neo4j/json graph |
+| **Neo4j 5** | Graph store runtime | `recommendation_pipeline.py` | bolt://neo4j:7687 |
+| **numpy** | Vector ops | Khắp recommender-ai-service | In-memory similarity |
+
+**LangChain / LlamaIndex:** Không tìm thấy import trong `requirements.txt` recommender-ai-service.
+
+**ChromaDB / FAISS persistent:** Không dùng. Vector index lưu trong `catalog_hybrid_index.pkl`, load RAM qua `pickle`.
+
+**OpenAI API:** Không dùng. LLM thực tế là Groq.
+
+**HuggingFace:** Dùng gián tiếp qua `sentence-transformers` model trên HuggingFace Hub.
+
+### 4.4.6 Deployment
+
+| Công nghệ | Vai trò | File |
+|-----------|---------|------|
+| **Docker** | Đóng gói mỗi service | `*/Dockerfile` |
+| **Docker Compose** | Orchestration local/staging | `docker-compose.yml` (~1130 dòng) |
+| **NGINX** | Reverse proxy, TLS termination ready | `nginx/` |
+
+**Kubernetes:** Không tìm thấy manifest trong repo.
+
+### Nhận xét mục 4.4
+
+Stack thực tế là **Django microservices + Django BFF + Python AI service**. Không có SPA framework. AI stack tự xây (RAG hybrid + Groq) thay vì LangChain — giảm dependency, tăng kiểm soát pipeline.
+
+## 4.5 XÂY DỰNG BACKEND
+
+Phần này phân tích **các domain service** mà storefront thực sự gọi. Review nằm trong `interaction-service` (không có `review-service` riêng).
+
+### 4.5.1 Authentication (auth-service)
+
+#### Mục tiêu
+Xác thực danh tính, cấp JWT, hỗ trợ NGINX `auth_request` introspect.
+
+#### Chức năng
+- Đăng ký tài khoản (`RegisterView`)
+- Đăng nhập theo role customer/staff/admin (`LoginView`)
+- Refresh token (`RefreshView`)
+- Introspect token cho edge proxy (`IntrospectTokenView`)
+- Rate limit login theo IP (`_rate_limit_login`)
+
+#### API
+
+| Method | Endpoint | Chức năng |
+|--------|----------|-----------|
+| POST | `/auth/register/` | Tạo user + customer profile |
+| POST | `/auth/login/` | Trả `access`, `refresh`, `user` |
+| POST | `/auth/refresh/` | Làm mới access token |
+| GET | `/auth/introspect/` | Validate token (NGINX) |
+| GET | `/users/me/` | Profile JWT hiện tại |
+
+#### Code Structure
+
+Gateway không xử lý auth trực tiếp — chỉ proxy:
 
 ```python
-logger.info(f"InternalClient: {method} {url}", extra={
-    "target_service": host,
-    "endpoint":       url,
-    "status_code":    response.status_code,
-    "latency_ms":     latency,
-    "span":           f"{self.service_name}->{host}"
+# api-gateway/gateway/views.py — login_view
+r = requests.post(
+    f"{SVC['auth']}/auth/login/",
+    json={"username": username, "password": password, "role": login_type},
+    timeout=5,
+)
+if r.status_code == 200:
+    data = r.json()
+    request.session["access_token"] = data["access"]
+    request.session["user"] = data["user"]
+```
+
+`auth-service` dùng `AuthService.register()` / `login()` trong `authentication/services.py`, ghi audit `AuthAudit`, hash password Django.
+
+#### Database Interaction
+- Bảng user, role mapping trong `auth_db` (PostgreSQL container `auth-db`)
+- Redis/cache cho rate limit login
+
+---
+
+### 4.5.2 User Service (user-service)
+
+#### Mục tiêu
+Quản lý profile, địa chỉ giao hàng — phục vụ checkout.
+
+#### Chức năng
+- CRUD địa chỉ (`AddressListView`, `AddressDetailView`)
+- Profile nội bộ (`UserProfileView`)
+- Danh sách customer cho staff (`CustomerListView`)
+
+#### API chính (gateway gọi)
+
+| Method | Endpoint | Khi nào gọi |
+|--------|----------|-------------|
+| GET | `/internal/users/{uuid}/addresses/` | Checkout GET — load địa chỉ |
+| POST | `/internal/users/{uuid}/addresses/` | Thêm địa chỉ từ profile/checkout |
+| PUT | `/internal/users/{uuid}/addresses/{id}/` | Đặt default, sửa địa chỉ |
+
+#### Luồng checkout
+`checkout()` gọi `_resolve_user_address()` → `GET user-service` addresses → validate snapshot → embed vào `shipping_address` khi `POST order-service/orders/`.
+
+#### Database
+- `user_db`: bảng `Address`, `UserProfile`, liên kết `customer_id`
+
+---
+
+### 4.5.3 Product Service (product-service)
+
+#### Mục tiêu
+Catalog **storefront** — sản phẩm, category, brand, variant, tồn kho đơn giản.
+
+#### Chức năng
+- CRUD sản phẩm (staff/admin qua gateway)
+- Flash sale sync (`InternalSyncFlashSalesView`)
+- Reserve/release stock nội bộ khi đặt hàng legacy
+
+#### API
+
+| Method | Endpoint | Gateway sử dụng |
+|--------|----------|-----------------|
+| GET | `/products/` | home, product_list, checkout hydrate |
+| GET | `/products/{id}/` | product_detail |
+| GET | `/categories/` | home, filter |
+| POST | `/internal/reserve-stock/` | order-service gọi khi tạo đơn |
+
+#### Code minh họa — format giá ở gateway
+
+```python
+# views.py — _fmt_product
+effective = _product_effective_price(p)  # flash_sale_price nếu đang sale
+return {
+    **p,
+    "display_price_fmt": _fmt_vnd(effective),
+    "is_flash_sale_active": on_flash_sale,
+}
+```
+
+#### Database
+- `product_db`: `Product`, `Category`, `Brand`, `ProductVariant`, `InventoryTransaction`
+
+**Lưu ý:** `catalog-service` là catalog v2 cho SAGA; **UI storefront dùng product-service**.
+
+---
+
+### 4.5.4 Order Service (order-service)
+
+#### Mục tiêu
+Tạo và quản lý đơn hàng. Có **hai** implementation song song.
+
+#### Luồng legacy (storefront đang dùng)
+
+| Bước | API | Xử lý |
+|------|-----|-------|
+| 1 | `POST /orders/` | Tạo order + items |
+| 2 | (nội bộ) | Gọi `product-service/internal/reserve-stock/` |
+| 3 | Trả `id` | Gateway redirect thanh toán |
+
+#### Luồng SAGA v2 (có code, BFF chưa gọi)
+
+```python
+# order-service — OrderViewSet.checkout
+order = OrderSagaManager.start_checkout(
+    user_id=str(user_id),
+    cart_items=cart_items,
+    shipping_address=shipping_address
+)
+```
+
+#### API legacy gateway dùng
+
+| Method | Endpoint | Chức năng |
+|--------|----------|-----------|
+| GET, POST | `/orders/` | Danh sách / tạo đơn |
+| GET, PUT | `/orders/{id}/` | Chi tiết / cập nhật trạng thái |
+| POST | `/orders/{id}/return/` | Yêu cầu trả hàng |
+
+#### Database
+- `order_db`: `Order`, `OrderItem`, `OrderSaga` (v2), outbox tables
+
+---
+
+### 4.5.5 Payment Service (payment-service)
+
+#### Mục tiêu
+Ghi nhận thanh toán, publish event RabbitMQ → kích hoạt shipping.
+
+#### Chức năng
+- Liệt kê phương thức (`PaymentMethodListView`)
+- Xử lý thanh toán (`PaymentListCreateView.post` → `PaymentService.process_payment`)
+- Mock gateway VNPay/MoMo qua UI gateway
+
+#### API
+
+| Method | Endpoint | Input chính | Output |
+|--------|----------|-------------|--------|
+| GET | `/payment-methods/` | JWT | Danh sách COD, VNPay Mock... |
+| POST | `/payments/` | `order_id`, `payment_amount`, `payment_method_id` | Payment record |
+
+#### Code gateway — COD vs Mock
+
+```python
+# order_pay — COD gọi payment ngay
+r = _post(f"{SVC['pay']}/payments/", json={
+    "order_id": order_id,
+    "payment_amount": amount_float,
+    "payment_method_id": int(method_id),
+}, request=request)
+track_order_purchases(request, order)  # AI behavior
+```
+
+Mock gateway render `payment_gateway_mock.html` → callback `payment_callback` → mới POST payment.
+
+#### Database + Async
+- `payment_db`: Payment, PaymentMethod
+- `payment-outbox-worker` → RabbitMQ → `shipping-consumer`
+
+---
+
+### 4.5.6 Review Service → interaction-service
+
+**Không có review-service riêng.** Review nằm trong `interaction-service`:
+
+| Method | Endpoint | Chức năng |
+|--------|----------|-----------|
+| GET, POST | `/api/v1/interactions/reviews/` | Đánh giá sản phẩm |
+| POST | `/api/v1/interactions/interactions/` | Event bus (VIEW, PURCHASE...) |
+
+Gateway `product_review()` gọi interaction-service khi đơn ở trạng thái `DELIVERED`/`COMPLETED`. `track_behavior(..., "review")` cập nhật recommender.
+
+### Nhận xét mục 4.5
+
+Backend triển khai đầy đủ commerce core. Điểm cần nhớ khi đọc code: **gateway là orchestrator** — đọc `views.py` để hiểu luồng thực tế, không chỉ đọc từng service độc lập.
+
+## 4.6 XÂY DỰNG AI SERVICE
+
+`recommender-ai-service` là trung tâm AI — gợi ý, chat RAG, behavior, Neo4j sync.
+
+### 4.6.1 AI Gateway (trong E-Commerce)
+
+Strictly speaking không có service tên "AI Gateway" riêng. **Vai trò AI Gateway** do `api-gateway` đảm nhiệm:
+
+| Endpoint BFF | Upstream | Mục đích |
+|--------------|----------|----------|
+| `POST /ai/chat/` | `recommender/api/recommender/chat-ktmp` | Proxy chat, tránh CORS |
+| (nội bộ) | `GET recommender/recommendations/{id}/` | Gợi ý trang chủ |
+| `behavior_tracking.py` | `POST recommender/api/recommender/events/` | Ghi hành vi |
+
+```python
+# ai_chat_proxy — retry 3 lần, timeout 90s
+r = SESSION.post(f"{SVC['recommender']}/api/recommender/chat-ktmp", json=body, timeout=90)
+```
+
+### 4.6.2 Chat Engine (KTMP RAG)
+
+**Input:** JSON `{message, user_id, history, recent_behaviors}`
+
+**Pipeline:**
+1. `KTMPChatConsultingView.post()` nhận request
+2. `AIModelSingleton.get_ktmp_rag_llm()` lazy-load model
+3. `rag_llm.chat()` → `intent_router` phân loại intent
+4. `HybridProductRetriever` retrieval catalog
+5. Groq API sinh `answer` + attach `products`
+
+**Output:** `{answer, products, intent, context_used}`
+
+### 4.6.3 RAG Engine
+
+File: `rag/hybrid_retriever.py`
+
+| Giai đoạn | Kỹ thuật | Output |
+|-----------|----------|--------|
+| Index build | `build_catalog_index` command | `catalog_hybrid_index.pkl` |
+| Sparse | TF-IDF + cosine | Top-K sparse |
+| Dense | SentenceTransformer embedding | Top-K dense |
+| Fusion | RRF (Reciprocal Rank Fusion) | Candidate pool |
+| Rerank | `product_reranker` | Final context docs |
+
+### 4.6.4 GraphRAG Engine
+
+Hai lớp graph trong hệ thống:
+
+1. **graph_kb.json** (`GraphRepository`) — lightweight JSON graph cho RAG context
+2. **Neo4j** (`recommendation_pipeline.py`) — graph walk cho candidate retrieval GNN pipeline
+
+```python
+# recommendation_pipeline.py (rút gọn)
+candidates = RecommendationPipeline._retrieve_candidates_neo4j(user_id)
+```
+
+GraphRAG mở rộng ngữ cảnh: từ query user → retrieve product → leo cạnh `BELONGS_TO` (category), `INTERACTED` (behavior).
+
+### 4.6.5 Recommendation Engine
+
+`RecommenderService` — hybrid 5 chiến lược:
+
+1. Implicit CF (ALS/NMF)
+2. Item co-occurrence
+3. Co-purchase từ order history
+4. Category affinity
+5. Cold-start fallback
+
+**Input:** `customer_id`, optional `prediction` từ BiLSTM
+
+**Output:** `recommended_product_ids`, `strategy`, `recommendation_scores`
+
+### 4.6.6 Sequence Diagram — Chat request
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant GW as api-gateway
+    participant REC as recommender-ai-service
+    participant RAG as HybridRetriever
+    participant GROQ as Groq API
+    participant PROD as product-service
+
+    U->>GW: POST /ai/chat/ {message, user_id, history}
+    GW->>REC: POST /api/recommender/chat-ktmp
+    REC->>RAG: retrieve(message)
+    RAG-->>REC: top-K products + context
+    REC->>GROQ: prompt + context
+    GROQ-->>REC: answer text
+    REC->>PROD: hydrate (nếu cần)
+    REC-->>GW: {answer, products, intent}
+    GW-->>U: JSON response
+```
+
+### Nhận xét mục 4.6
+
+AI Service tách biệt deploy, scale độc lập. Lazy-load model lần đầu có thể timeout — gateway đã retry và trả 504 có message hướng dẫn user.
+
+## 4.7 TÍCH HỢP AI VÀ HỆ THỐNG THƯƠNG MẠI ĐIỆN TỬ
+
+Đây là phần mô tả **end-to-end** cách AI gắn vào storefront — từ hành vi người dùng đến kết quả hiển thị.
+
+### 4.7.1 Tổng quan luồng tích hợp
+
+```mermaid
+flowchart TD
+    A[Người dùng truy cập website] --> B{Duyệt / tìm SP?}
+    B --> C[api-gateway: track_behavior]
+    C --> D[recommender-ai-service<br/>POST /api/recommender/events/]
+    C --> E[interaction-service<br/>InteractionEvent]
+    B --> F{Hỏi chatbot?}
+    F -->|Có| G[api-gateway POST /ai/chat/]
+    G --> H[recommender-ai-service<br/>HybridProductRetriever]
+    H --> I[Knowledge Base pickle]
+    H --> J[Neo4j graph context]
+    G --> K[Groq LLM]
+    B --> L[Trang chủ customer]
+    L --> M[api-gateway GET recommendations]
+    M --> N[recommender-ai-service<br/>RecommenderService]
+    N --> O[recommender_db + Neo4j]
+    N --> P[order-service co-purchase]
+    N --> Q[Ranking Top-N]
+    Q --> R[Hiển thị home.html]
+```
+
+### 4.7.2 Bước 1 — Người dùng truy cập website
+
+- Request `GET /` qua NGINX → `home()` trong gateway.
+- Session Django lưu JWT sau login; `_role()` và `_entity_id()` đọc từ `request.session["user"]`.
+- Không gọi AI nếu user là guest thuần — chỉ load `product-service/products/?sort_by=newest`.
+
+### 4.7.3 Bước 2 — Tìm kiếm / xem sản phẩm
+
+`product_list` và `product_detail` gọi `track_behavior(request, customer_id, product_id, "view")` khi customer đã đăng nhập.
+
+```python
+# behavior_tracking.py
+requests.post(f"{SVC['recommender']}/api/recommender/events/", json={
+    "customer_id": customer_id,
+    "product_id": product_id,
+    "action": action,  # view, add_to_cart, purchase...
+    "session_id": session_id,
+    "device": device,
+    "persona": persona,
 })
 ```
 
-Log output JSON:
+Song song gửi `interaction-service` với `event_type: VIEW` — phục vụ analytics và đồng bộ sau này.
+
+### 4.7.4 Bước 3 — AI phân tích truy vấn (chat)
+
+Khi user gõ câu hỏi chatbot, `intent_router` phân loại: tư vấn sản phẩm, tra cứu đơn, chào hỏi... Intent quyết định có gọi retrieval hay không.
+
+### 4.7.5 Bước 4 — Knowledge Base truy xuất
+
+`HybridProductRetriever.retrieve(query)`:
+- Load `catalog_hybrid_index.pkl` (TF-IDF matrix + embeddings)
+- Nếu file chưa có → fetch live từ `product-service` và build tạm
+- RRF merge sparse + dense → top-K sản phẩm liên quan
+
+### 4.7.6 Bước 5 — GraphRAG mở rộng ngữ cảnh
+
+`GraphRepository.get_context(customer_id, product_id)` thêm cạnh behavior, category. Neo4j pipeline (khi bật) walk từ User node → Product đã tương tác → sản phẩm cùng category.
+
+### 4.7.7 Bước 6 — Recommendation Engine
+
+Trang chủ customer: `_recommendation_order_ids()` → `GET recommender/recommendations/{entity_id}/`.
+
+`RecommenderService.recommend()`:
+- Đọc behavior matrix từ `recommender_db`
+- Gọi `order-service/orders/internal/recommender-orders/` cho co-purchase
+- Kết hợp weighted score → sort → `recommended_product_ids`
+
+Gateway `_customer_recommendation_products_page()` paginate theo thứ tự score; fallback newest nếu AI trả rỗng.
+
+### 4.7.8 Bước 7 — Kết quả hiển thị
+
+Template `home.html` nhận `recommendation_products` đã `_fmt_product`. Infinite scroll gọi `GET /api/home/products/?page=2` — vẫn theo thứ tự recommendation.
+
+### 4.7.9 Sequence Diagram — Tích hợp gợi ý trang chủ
+
+```mermaid
+sequenceDiagram
+    participant U as Customer
+    participant GW as api-gateway
+    participant PROD as product-service
+    participant REC as recommender-ai-service
+    participant ORD as order-service
+
+    U->>GW: GET /
+    GW->>PROD: GET /products/?flash_sale=true
+    GW->>REC: GET /recommendations/{customer_id}/
+    REC->>ORD: GET /orders/internal/recommender-orders/
+    REC-->>GW: recommended_product_ids + scores
+    GW->>PROD: GET /products/{id} (hydrate batch)
+    GW-->>U: HTML home + AI-ordered products
+```
+
+### 4.7.10 Activity Diagram — Hành vi mua hàng → AI
+
+```mermaid
+flowchart TD
+    Start([Customer thêm giỏ]) --> T1[api-gateway track_behavior]
+    T1 --> AI1[recommender-ai-service ghi event]
+    T1 --> INT1[interaction-service ghi event]
+    Start --> Checkout[api-gateway Checkout POST]
+    Checkout --> Order[order-service tạo đơn]
+    Order --> Pay{Thanh toán?}
+    Pay -->|COD / Mock| T2[track_order_purchases]
+    T2 --> AI2[recommender-ai-service cập nhật matrix]
+    T2 --> Neo[recommender-consumer cập nhật Neo4j]
+    Pay --> PaySvc[payment-service callback]
+    PaySvc --> T2
+```
+
+### Nhận xét mục 4.7
+
+AI được tích hợp **không xâm lấn** luồng commerce: checkout vẫn chạy nếu recommender down (fallback sản phẩm mới nhất). Đây là thiết kế **resilient** phù hợp production thực tế.
+
+## 4.8 TRIỂN KHAI KNOWLEDGE BASE
+
+Knowledge Base trong triển khai thực tế gồm **bốn lớp lưu trữ** (chi tiết node, edge, action xem **Chương 3 mục 3.3.1a–3.3.1e**):
+
+| Lớp KB | Nguồn microservice | File / DB | Dạng dữ liệu |
+|--------|-------------------|-----------|--------------|
+| Catalog text | `product-service` | `catalog_hybrid_index.pkl` | Vector + TF-IDF (không phải graph) |
+| Behavior | `interaction-service`, gateway tracking | `recommender_db` | Bảng `BehaviorEvent` |
+| Graph online | Events qua RabbitMQ | Neo4j | Node User, Product; cạnh VIEW/PURCHASE/… |
+| Graph offline | `data_user500.csv` | `rag_system.pkl` | NetworkX MultiDiGraph |
+
+**Quan hệ User–User:** Không có cạnh trực tiếp trong graph. Tương tự khách được suy ra qua sản phẩm chung (Jaccard / collaborative filtering).
+
+### 4.8.1 Dữ liệu lấy từ đâu
+
+Nguồn chính: **product-service** — toàn bộ sản phẩm active qua REST `GET /products/?page_size=500+`.
+
+Mỗi document gồm: `name`, `description`, `sku`, `category.name`, `brand.name`, `attributes` — ghép trong `_product_doc()`:
+
+```python
+# hybrid_retriever.py
+parts = [raw.get("name"), raw.get("description"), raw.get("sku"), cat_name, brand_name]
+return _tokenize_vi(" ".join(parts))
+```
+
+### 4.8.2 Tiền xử lý
+
+- Lowercase, giữ dấu tiếng Việt
+- Loại ký tự đặc biệt regex
+- Chuẩn hóa khoảng trắng `_tokenize_vi()`
+
+### 4.8.3 Chunking
+
+Catalog e-commerce mỗi sản phẩm = **1 document** (không chunk paragraph dài như tài liệu PDF). Lý do: mỗi SKU là đơn vị retrieval tự nhiên.
+
+### 4.8.4 Embedding
+
+- Model: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (env `EMBEDDING_MODEL`)
+- Encode toàn bộ `docs[]` → matrix `embeddings` numpy
+- Optional TruncatedSVD giảm chiều
+
+### 4.8.5 Indexing
+
+Command: `python manage.py build_catalog_index`
+
+Output: `recommender-ai-service/rag/catalog_hybrid_index.pkl` chứa:
+- `catalog`, `docs`, `product_ids`
+- `_tfidf`, `_tfidf_matrix`
+- `_embeddings`
+
+Load lúc runtime: `HybridProductRetriever._ensure_index()` — đọc pickle vào RAM.
+
+### 4.8.6 Dữ liệu lưu ở đâu
+
+| Lớp | Vị trí | Microservice nguồn | Ghi chú |
+|-----|--------|-------------------|---------|
+| Source of truth (catalog) | `product_db` | product-service | CRUD sản phẩm gốc |
+| KB index file | `catalog_hybrid_index.pkl` | product-service API | Rebuild khi catalog đổi nhiều |
+| Behavior KB | `recommender_db` | interaction-service, payment, gateway | Bảng, không phải graph |
+| Graph KB | Neo4j volume | Events từ nhiều service | User→Product edges |
+| Graph offline | `rag_system.pkl` | CSV seed | Chỉ cho dataset U00x |
+| Runtime cache | RAM trong recommender-ai-service | — | Mất khi restart container |
+
+**ChromaDB / FAISS file:** Không tìm thấy trong source code.
+
+### Nhận xét mục 4.8
+
+KB triển khai **đơn giản, hiệu quả** cho catalog có cấu trúc. Trade-off: phải chạy `build_catalog_index` sau khi import sản phẩm mới hàng loạt.
+
+## 4.9 TRIỂN KHAI GRAPH DATABASE
+
+### 4.9.1 Neo4j trong Docker
+
+`docker-compose.yml` service `neo4j`:
+- Bolt: `bolt://neo4j:7687`
+- Auth: env `NEO4J_AUTH`
+- Volume: `neo4j_data`
+
+Consumer `recommender-consumer` lắng nghe RabbitMQ, ghi node/edge khi có event mua hàng, view...
+
+### 4.9.2 Knowledge Graph — schema (Neo4j runtime)
+
+**Node types** (từ `event_handler.py` và bulk script):
+- `:User` — property `id` (runtime) hoặc `user_id` (bulk CSV)
+- `:Product` — property `id` (runtime) hoặc `product_id` (bulk)
+- `:Category` — chỉ trong bulk `rebuild_neo4j.cypher`
+- `:Action` — chỉ trong bulk script, **không** có trong runtime MERGE
+
+**Relationship types (runtime — tên cạnh = loại hành vi):**
+- `(User)-[:VIEW]->(Product)` — xem sản phẩm
+- `(User)-[:ADDED_TO_CART]->(Product)` — thêm giỏ
+- `(User)-[:PURCHASE]->(Product)` — mua (từ `payment.succeeded`)
+- Mỗi cạnh có `weight`, `last_interaction`, `interaction_count`
+
+**User–User:** Không có quan hệ trực tiếp. Xem Chương 3 mục 3.3.1c.
+
+**Relationship types (bulk CSV):**
+- `(User)-[:PERFORMED {action, timestamp}]->(Product)`
+- `(Product)-[:BELONGS_TO]->(Category)`
+
+### 4.9.3 graph_kb.json (GraphRAG offline)
+
+`GraphRepository` lưu JSON tại `data/graph_kb.json` (env `GRAPH_KB_PATH`):
+
+```python
+# Khi ghi behavior
+self._upsert_node(nodes, GraphNode(u, "User", {"customer_id": customer_id}))
+self._upsert_node(nodes, GraphNode(p, "Product", {"product_id": product_id}))
+self._upsert_edge(edges, GraphEdge(u, p, action, weight, {}))
+```
+
+Dùng cho RAG context string: `"graph: direct behavior weight=2.50"`.
+
+### 4.9.4 Cypher Query — ví dụ thực tế
+
+Truy vấn candidate từ user đã mua sản phẩm cùng category:
+
+```cypher
+MATCH (u:User {customer_id: $customer_id})-[r:INTERACTED]->(p:Product)-[:BELONGS_TO]->(c:Category)
+MATCH (p2:Product)-[:BELONGS_TO]->(c)
+WHERE NOT (u)-[:INTERACTED]->(p2)
+RETURN p2.product_id AS product_id, count(*) AS score
+ORDER BY score DESC
+LIMIT 20
+```
+
+*(Pattern tương đương logic trong `recommendation_pipeline.py` — cần đối chiếu file khi debug.)*
+
+### 4.9.5 GraphRAG trong chat
+
+`rag_llm.py` kết hợp:
+- Retrieval text từ hybrid index
+- Graph context từ `GraphRepository` hoặc NetworkX fallback
+- Đưa vào prompt Groq → câu trả lời có tham chiếu sản phẩm liên quan
+
+### Nhận xét mục 4.9
+
+Hệ thống dùng **hai store graph**: JSON nhẹ cho RAG, Neo4j cho recommendation pipeline async. Không bắt buộc một công nghệ duy nhất.
+
+## 4.10 TRIỂN KHAI RECOMMENDATION SYSTEM
+
+### 4.10.1 Tổng quan pipeline
+
+```mermaid
+flowchart LR
+    UB[User Behavior events] --> FE[Feature Extraction]
+    FE --> EM[Embedding / CF matrix]
+    EM --> GR[GraphRAG Neo4j candidates]
+    GR --> RM[RecommenderService hybrid]
+    RM --> RK[Ranking weighted score]
+    RK --> TN[Top-N product IDs]
+    TN --> HY[Hydrate product-service]
+    HY --> UI[home.html / recommendations page]
+```
+
+### 4.10.2 Dữ liệu đầu vào
+
+| Nguồn | Loại dữ liệu | Cách thu thập |
+|-------|--------------|---------------|
+| Behavior events | view, cart, wishlist, purchase | `track_behavior()` → `POST /api/recommender/events/` |
+| Order history | co-purchase pairs | `GET /orders/internal/recommender-orders/` |
+| Product catalog | category, price, stock | `ProductCatalog` sync từ product-service |
+| Graph | user-product edges | Neo4j + `graph_kb.json` |
+
+Trọng số hành vi (`behavior_actions.DEFAULT_ACTION_WEIGHTS`):
+- `purchase` cao nhất
+- `add_to_cart`, `wishlist` trung bình
+- `view`, `click` thấp hơn
+
+### 4.10.3 Feature Extraction
+
+`RecommenderRepository` aggregate events thành sparse matrix user×item×action.
+
+`implicit_cf_engine` train ALS trên matrix — command `train_implicit_cf_local`.
+
+`behavior_prediction_service` (BiLSTM) dự đoán **next action** — ảnh hưởng strategy string trả về API.
+
+### 4.10.4 Embedding
+
+- CF: latent factors từ ALS/NMF
+- Content: category affinity khi user thích category X
+- Không embedding user profile riêng — dùng id + behavior history
+
+### 4.10.5 GraphRAG trong recommendation
+
+`RecommendationPipeline._retrieve_candidates_neo4j(user_id)` bổ sung candidate ngoài CF — đặc biệt khi user ít behavior (warm graph từ user tương tự).
+
+### 4.10.6 Recommendation Model — logic đề xuất
+
+```python
+# recommender_service.py — ý tưởng hybrid
+# 1. CF scores từ implicit engine
+# 2. Co-occurrence từ users có hành vi giống
+# 3. Co-purchase từ orders
+# 4. Category affinity
+# 5. Fallback popular by category
+```
+
+Trọng số cấu hình env: `IMPLICIT_CF_ALS_WEIGHT`, `COOCCURRENCE_WEIGHT`, `COPURCHASE_WEIGHT`, `CATEGORY_AFFINITY_WEIGHT`.
+
+### 4.10.7 Ranking
+
+Mỗi `product_id` nhận **tổng điểm weighted**. Sort giảm dần. Loại sản phẩm hết hàng / inactive qua `ProductCatalog`.
+
+API trả về:
 ```json
 {
-  "timestamp": "2026-05-31T10:23:45.123Z",
-  "level": "INFO",
-  "service_name": "order-service",
-  "trace_id": "a1b2c3d4",
-  "message": "InternalClient: POST http://product-service:8000/internal/reserve-stock/",
-  "target_service": "product-service:8000",
-  "status_code": 200,
-  "latency_ms": 45,
-  "span": "order-service->product-service:8000"
+  "recommended_product_ids": [12, 45, 7],
+  "recommendation_scores": [{"product_id": 12, "score": 8.42}],
+  "strategy": "hybrid_cf_graph",
+  "next_action_prediction": {"action": "add_to_cart", "confidence": 0.71}
 }
 ```
 
-Các log này có thể được đẩy vào ELK Stack (Elasticsearch + Logstash + Kibana) hoặc Grafana Loki để tạo dashboard monitoring real-time.
+### 4.10.8 Top-N Products — gateway
 
-### 4.10.4 Health Check Endpoints
+`_recommendation_order_ids(request, customer_id, limit)` cache ngắn, gọi recommender, trả list id.
 
-Auth Service expose 2 health check endpoints chuẩn Kubernetes:
+Trang `/recommendations/` render full list. Admin `/admin/recommendation/` xem metrics/offline eval.
 
-```python
-# auth-service/authentication/views.py
-class LiveHealthView(APIView):
-    """Liveness probe — service có đang chạy không?"""
-    def get(self, request):
-        return Response({"status": "live"}, status=200)
+### 4.10.9 Cold start
 
-class ReadyHealthView(APIView):
-    """Readiness probe — service có sẵn sàng nhận traffic không?"""
-    def get(self, request):
-        try:
-            from django.db import connection
-            connection.ensure_connection()
-            db_status = "ok"
-        except Exception:
-            db_status = "error"
+- **Guest:** không gọi recommender — sản phẩm `sort_by=newest`
+- **Customer mới:** category-weighted popular + trending API `GET /api/v1/recommendations/trending`
 
-        if db_status == "ok":
-            return Response({"status": "ready", "database": db_status}, status=200)
-        else:
-            return Response({"status": "not_ready", "database": db_status}, status=503)
-```
+### Nhận xét mục 4.10
 
-Docker Compose sử dụng health check này:
-```yaml
-healthcheck:
-  test: ["CMD-SHELL", "python -c \"import urllib.request;
-         urllib.request.urlopen('http://localhost:8000/health/live/').read()\""]
-  interval: 10s
-  timeout: 3s
-  retries: 5
-```
+Recommendation là **hybrid thực dụng** — không phụ thuộc một model duy nhất. Có thể giải thích từng layer khi bảo vệ đồ án.
 
+## 4.11 TRIỂN KHAI CHATBOT
 
----
+### 4.11.1 Chat UI
 
-## 4.11 Đánh giá Kiến trúc — Ưu điểm, Nhược điểm và Bài học
+Widget embed trong template base — `chatbot-widget.js` / CSS từ `recommender-ai-service/static/` hoặc copy vào gateway static.
 
-### 4.11.0 Sơ đồ So sánh Monolith vs Microservices
+UI gồm:
+- Bubble icon góc màn hình
+- Panel chat lịch sử `history[]` lưu phía client (sessionStorage)
+- Gửi `POST /ai/chat/` same-origin
 
-```mermaid
-graph LR
-    subgraph MONO["❌ Monolith Architecture"]
-        M_APP[Single Application<br/>All modules in 1 process]
-        M_DB[(Single Database<br/>All tables shared)]
-        M_APP --- M_DB
-        M_FAIL[💥 1 module fails<br/>→ Entire system down]
-        M_SCALE[📈 Scale = Clone entire app<br/>Wasteful]
-        M_LOCK[🔒 DB Lock contention<br/>Read blocks Write]
-    end
+### 4.11.2 Backend API (BFF proxy)
 
-    subgraph MICRO["✅ Microservices Architecture (This Project)"]
-        direction TB
-        S1[auth-service] --- DB1[(auth_db)]
-        S2[product-service] --- DB2[(product_db + Redis)]
-        S3[order-service] --- DB3[(order_db)]
-        S4[payment-service] --- DB4[(pay_db)]
-        S5[shipping-service] --- DB5[(ship_db)]
-        S6[recommender-ai] --- DB6[(recommender_db + Neo4j)]
+Không expose trực tiếp port 8011 ra browser. Gateway `ai_chat_proxy`:
+- `@csrf_exempt` + `@require_POST`
+- Forward body JSON nguyên vẹn
+- Retry connection 3 lần, timeout 90s
 
-        S3 -->|Outbox + MQ| S4
-        S4 -.->|retry| S5
+### 4.11.3 AI Service
 
-        FAULT[✅ Recommender OOM<br/>→ Shopping still works]
-        SCALE_OK[✅ Scale product-service ×5<br/>Others unchanged]
-        NO_LOCK[✅ Each DB independent<br/>No cross-service locks]
-    end
+`KTMPChatConsultingView` → `rag_llm.chat(user_id, message, history, recent_behaviors)`:
+1. Intent classification
+2. Retrieve products
+3. Build prompt tiếng Việt
+4. Groq completion
+5. Parse response + attach product cards
 
-    style MONO fill:#2d132c,color:#e8e8f0
-    style MICRO fill:#0f3460,color:#e8e8f0
-    style M_FAIL fill:#ff6b6b,color:#fff
-    style M_SCALE fill:#ff9f43,color:#000
-    style M_LOCK fill:#ff6b6b,color:#fff
-    style FAULT fill:#00d9a3,color:#000
-    style SCALE_OK fill:#00d9a3,color:#000
-    style NO_LOCK fill:#00d9a3,color:#000
-```
+### 4.11.4 Knowledge Base trong chat
 
-*Hình 4.9: So sánh Monolith và Microservices — fault isolation và scalability*
+Mỗi câu hỏi tư vấn SP kích hoạt `HybridProductRetriever.retrieve(message, top_k=5)`.
+
+Context đưa vào LLM gồm tên, giá, mô tả rút gọn 280 ký tự, category.
+
+### 4.11.5 Cách chatbot sinh câu trả lời
+
+Prompt template trong `rag_llm.py` yêu cầu:
+- Trả lời tiếng Việt tự nhiên
+- Chỉ dùng thông tin context (giảm hallucination)
+- Gợi ý product_id cụ thể khi phù hợp
+
+Output field `products` cho frontend render thumbnail + link `/products/{id}/`.
+
+### 4.11.6 Sequence — một vòng chat
 
 ```mermaid
-quadrantChart
-    title Đánh giá các thành phần kiến trúc
-    x-axis "Độ phức tạp triển khai" --> "Đơn giản"
-    y-axis "Giá trị mang lại" --> "Cao"
-    quadrant-1 Ưu tiên cao
-    quadrant-2 Cần đầu tư
-    quadrant-3 Xem xét lại
-    quadrant-4 Tối ưu hóa
-    Database per Service: [0.8, 0.9]
-    Outbox Pattern: [0.4, 0.95]
-    Circuit Breaker: [0.5, 0.85]
-    JWT Stateless Auth: [0.85, 0.9]
-    HMAC Zero-Trust: [0.45, 0.8]
-    Redis Cache: [0.75, 0.85]
-    RabbitMQ Fanout: [0.5, 0.75]
-    Distributed Tracing: [0.35, 0.7]
-    Docker Compose: [0.7, 0.8]
-    Hybrid AI Recommender: [0.2, 0.85]
+sequenceDiagram
+    participant UI as chatbot-widget.js
+    participant GW as /ai/chat/
+    participant REC as chat-ktmp
+    participant RAG as HybridRetriever
+    participant LLM as Groq
+
+    UI->>GW: POST {message, user_id, history}
+    GW->>REC: proxy
+    REC->>RAG: retrieve(message)
+    RAG-->>REC: context docs
+    REC->>LLM: chat completion
+    LLM-->>REC: answer
+    REC-->>GW: {answer, products, intent}
+    GW-->>UI: JSON
+    UI->>UI: render bubbles + product cards
 ```
 
-*Hình 4.10: Quadrant chart đánh giá các thành phần kiến trúc theo độ phức tạp và giá trị*
+### Nhận xét mục 4.11
 
-### 4.11.1 Bảng So sánh Monolith vs Microservices
+Chatbot **Mochi/KTMP** là điểm chạm AI trực tiếp với khách. Proxy BFF giải quyết CORS và che API key Groq phía server.
 
-| Tiêu chí | Monolith | Microservices (dự án này) |
-|---|---|---|
-| **Fault Isolation** | Lỗi 1 module → sập toàn hệ thống | Lỗi Recommender không ảnh hưởng Order/Payment |
-| **Scalability** | Scale toàn bộ app | Scale riêng từng service (ví dụ: 5 Product containers) |
-| **DB Bottleneck** | 1 DB chịu tất cả load | 8 DB riêng biệt, không tranh chấp lock |
-| **Technology Freedom** | Bị lock vào 1 stack | Mỗi service chọn DB phù hợp (PostgreSQL, Neo4j, Redis) |
-| **Deployment** | Deploy toàn bộ khi sửa 1 dòng | Deploy riêng từng service |
-| **Development Complexity** | Đơn giản | Phức tạp hơn (distributed tracing, eventual consistency) |
-| **Operational Overhead** | Thấp | Cao (20+ containers, nhiều logs) |
-| **Testing** | Dễ integration test | Cần mock services, contract testing |
+## 4.12 TRIỂN KHAI HỆ THỐNG BẰNG DOCKER
 
-### 4.11.2 Ưu điểm đã được chứng minh
+### 4.12.1 Docker Architecture
 
-**1. Fault Isolation thực sự hoạt động:**
-Khi Recommender AI Service bị OOM (Out of Memory) do load model Keras lớn, toàn bộ luồng mua hàng (Product → Cart → Order → Payment → Shipping) vẫn hoạt động bình thường. API Gateway gracefully degrade — trang sản phẩm hiển thị không có gợi ý AI thay vì crash.
+Toàn bộ hệ thống chạy bằng một lệnh `docker-compose up` từ root repo. Mạng chung `ecommerce-net` — mọi container resolve tên service (DNS nội bộ).
 
-**2. Database per Service ngăn chặn lock contention:**
-Product Service chạy full-table scan để tìm kiếm sản phẩm (query nặng) không ảnh hưởng đến Order Service đang xử lý thanh toán. Hai DB hoàn toàn độc lập.
+### 4.12.2 Deployment Diagram
 
-**3. Outbox Pattern đảm bảo không mất event:**
-Trong quá trình test, khi tắt RabbitMQ đột ngột sau khi Order được tạo, Outbox event vẫn còn trong `order_outbox` table với status `PENDING`. Khi RabbitMQ khởi động lại, worker tự động relay event — không mất dữ liệu.
+```mermaid
+flowchart TB
+    subgraph Host
+        subgraph Compose[docker-compose]
+            NG[nginx:80]
+            GW[api-gateway:8000]
+            subgraph MS[Microservices x14]
+                AUTH[auth-service]
+                PROD[product-service]
+                ORD[order-service]
+                REC[recommender-ai-service:8011]
+            end
+            subgraph Data
+                PG[(PostgreSQL x14)]
+                N4J[(neo4j)]
+                RD[(redis)]
+                MQ[rabbitmq]
+            end
+            subgraph Workers
+                OW[order-outbox-worker]
+                PC[payment-consumer]
+                RC[recommender-consumer]
+            end
+        end
+    end
+    User((User)) --> NG
+    NG --> GW
+    GW --> MS
+    MS --> Data
+    MS --> MQ
+    MQ --> Workers
+    Workers --> REC
+    Workers --> N4J
+```
 
-**4. Circuit Breaker ngăn Cascading Failure:**
-Khi Product Service bị tắt, Order Service không bị block vô hạn. Circuit Breaker mở sau 3 lần thất bại, trả về lỗi ngay lập tức. Sau 15 giây, tự động thử lại.
+### 4.12.3 Container Structure — nhóm vai trò
 
-### 4.11.3 Nhược điểm và Thách thức
+| Nhóm | Containers | Vai trò |
+|------|------------|---------|
+| Edge | `nginx` | Public entry :80 |
+| BFF | `api-gateway` | Storefront + orchestration |
+| Core | `auth`, `user`, `product`, `cart`, `order`, `payment`, `shipping`, `promotion`, `interaction` | Business API |
+| v2 | `catalog`, `inventory`, `notification` | SAGA / mở rộng |
+| AI | `recommender-ai-service`, `neo4j`, `model-serving-service` | ML + graph |
+| Data | `*-db` x14, `redis`, `rabbitmq` | Persistence + messaging |
+| Workers | `*-consumer`, `*-outbox-worker` | Async processing |
+| Observability | `jaeger` | Tracing (optional) |
 
-**1. Yêu cầu tài nguyên cao:**
-Chạy đầy đủ hệ thống cần tối thiểu 8GB RAM:
-- 8 PostgreSQL instances: ~200MB × 8 = 1.6GB
-- RabbitMQ: ~300MB
-- Neo4j: ~500MB
-- Redis: ~50MB
-- 8 Django services: ~150MB × 8 = 1.2GB
-- Recommender AI (torch + tensorflow): ~2GB
-- NGINX, Jaeger: ~100MB
-- **Tổng: ~6–8GB**
+### 4.12.4 Volume
 
-**2. Distributed Debugging phức tạp:**
-Khi có bug trong luồng Order → Payment, cần kiểm tra log của 3–4 services và 2 workers. Không có `X-Request-ID` thì gần như không thể trace được.
+Mỗi PostgreSQL có named volume (`product_db_data`, `order_db_data`...) — dữ liệu survive `docker-compose down` (không `-v`).
 
-**3. Eventual Consistency cần xử lý cẩn thận:**
-Sau khi thanh toán thành công, Order status vẫn là `pending_payment` trong vài giây cho đến khi consumer xử lý event. Nếu khách hàng refresh ngay lập tức, họ thấy trạng thái cũ. Cần xử lý UX phù hợp (loading state, polling).
+Neo4j: `neo4j_data`, `neo4j_logs`, `neo4j_import`.
 
-**4. Idempotency phải được implement ở mọi nơi:**
-RabbitMQ đảm bảo at-least-once delivery — message có thể được deliver nhiều lần. Mọi consumer phải implement idempotency check (ví dụ: `Payment.objects.filter(order_id=order_id).exists()`).
+### 4.12.5 Network
 
-### 4.11.4 Bài học Kiến trúc
+Tất cả attach `ecommerce-net`. Service gọi nhau qua hostname: `http://product-service:8000/products/`.
 
-1. **Data trước, Model sau:** Bài học từ AI Service — dù kiến trúc BiLSTM phức tạp đến đâu, nếu dữ liệu có entropy quá cao (ceiling 33.8%), model không thể học được. Fix data trước, rồi mới optimize model.
+Chỉ `nginx` expose port 80 ra host (và một số DB port debug 55432+).
 
-2. **Outbox Pattern là bắt buộc, không phải optional:** Dual-Write Problem là thực tế, không phải lý thuyết. Bất kỳ hệ thống nào ghi DB rồi gọi external service đều có nguy cơ inconsistency.
+### 4.12.6 Environment Variables
 
-3. **Circuit Breaker phải dùng shared state:** In-memory circuit breaker không hoạt động với multi-process servers (Gunicorn). Phải dùng Redis hoặc database để lưu state.
+Ví dụ quan trọng từ compose:
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DB_NAME_*`
+- `INTERNAL_TOKEN`, `INTERNAL_SIGNING_SECRET` — service-to-service
+- `GROQ_API_KEY` — recommender chat
+- `NEO4J_AUTH` — graph DB
+- `RABBITMQ_DEFAULT_USER/PASS`
 
-4. **Structured Logging từ đầu:** Thêm `trace_id` và `span` vào mọi log từ ngày đầu tiên. Rất khó retrofit sau khi hệ thống đã lớn.
+`api-gateway` `SERVICE_URLS` map tên → URL nội bộ trong `settings.py`.
 
-5. **Healthcheck là bắt buộc:** Docker Compose `depends_on: condition: service_healthy` ngăn chặn race condition khi khởi động. Không có healthcheck, services thường crash khi DB chưa sẵn sàng.
+### 4.12.7 Giao tiếp giữa containers
+
+1. **Sync HTTP:** gateway → microservices (requests)
+2. **Async AMQP:** outbox worker publish → consumer xử lý
+3. **Health:** mỗi service `/health/live`, `/health/ready` cho depends_on
+
+### Nhận xét mục 4.12
+
+Docker Compose phù hợp demo và phát triển đồ án. Production thật cần Kubernetes + secret manager — **không có trong repo**.
+
+## 4.13 TRIỂN KHAI API
+
+Phần này liệt kê API **thực tế trong source code**, nhóm theo service. Storefront chủ yếu gọi qua BFF; bảng gồm cả REST gốc để đối chiếu.
+
+### 4.13.1 api-gateway — JSON / proxy (storefront gọi trực tiếp)
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| GET | `/api/guest/products/` | Infinite scroll guest | `page`, `page_size` | `{products[], has_more}` | Guest only |
+| GET | `/api/home/products/` | Infinite scroll customer AI order | `page`, `page_size` | `{products[], total_pages}` | Customer JWT session |
+| POST | `/ai/chat/` | Proxy chatbot | `{message, user_id, history}` | `{answer, products, intent}` | Không (csrf_exempt) |
+| GET | `/orders/api/status/` | Poll trạng thái đơn AJAX | `order_ids` | status map | Session |
+| GET | `/addresses/api/` | JSON địa chỉ profile | — | address list | Session |
+| POST | `/cart/{id}/checkout/apply-voucher/` | Áp voucher | `promotion_code` | discount info | Customer |
+| GET | `/cart/{id}/checkout/shipping-fees/` | Phí ship theo city | `city`, `method_id` | `{shipping_fee}` | Customer |
+
+### 4.13.2 auth-service
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| POST | `/auth/register/` | Đăng ký | username, email, password, phone, role | JWT + user | Public |
+| POST | `/auth/login/` | Đăng nhập | username, password, role | JWT + user | Public, rate limit IP |
+| POST | `/auth/refresh/` | Refresh token | refresh | access mới | Refresh token |
+| GET | `/auth/introspect/` | Validate JWT | Header Authorization | `{active: true}` | NGINX auth_request |
+
+**Validation:** `RegisterSerializer`, `LoginSerializer` — DRF validate field required, email format.
+
+### 4.13.3 product-service (storefront catalog)
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| GET | `/products/` | Danh sách SP | `page`, `category_id`, `sort_by`, `flash_sale` | Paginated products | Public/internal |
+| GET | `/products/{id}/` | Chi tiết SP | pk | Product + category + brand | Public |
+| GET | `/categories/` | Danh mục | page_size | Categories | Public |
+| POST | `/internal/reserve-stock/` | Giữ hàng đặt đơn | order_id, items[] | reservation result | Internal HMAC |
+
+### 4.13.4 cart-service
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| GET | `/carts/{customer_id}/` | Xem giỏ | customer_id | cart + items | JWT forwarded |
+| POST | `/carts/{customer_id}/items/` | Thêm SP | product_id, quantity, variant_id | item | Customer |
+| PUT | `/carts/{customer_id}/items/{item_id}/` | Đổi SL | quantity | item | Customer |
+| DELETE | `/carts/{customer_id}/` | Xóa giỏ sau checkout | — | 204 | Internal |
+
+### 4.13.5 order-service (legacy — BFF dùng)
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| POST | `/orders/` | Tạo đơn | customer_id, items[], shipping_address, promotion_code | Order id | Customer |
+| GET | `/orders/{id}/` | Chi tiết đơn | pk | Order + items | Owner/staff |
+| GET | `/orders/internal/recommender-orders/` | Lịch sử mua cho AI | customer_id? | orders[] | Internal |
+
+### 4.13.6 payment-service (legacy)
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| GET | `/payment-methods/` | PT thanh toán | — | COD, VNPay Mock... | Auth |
+| POST | `/payments/` | Ghi thanh toán | order_id, payment_amount, payment_method_id | Payment | Customer |
+
+### 4.13.7 shipping-service
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| GET | `/api/methods/` | PT vận chuyển | — | methods[] | Public |
+| POST | `/api/shipping/calculate-fee/` | Tính phí | items[], city, method_id | fee, distance_km | Public |
+
+### 4.13.8 promotion-service
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| POST | `/api/promotions/apply-voucher/` | Kiểm tra voucher | code, cart_total | discount | Gateway checkout |
+| GET | `/api/promotions/flash-sale-prices/` | Giá flash sale | product_ids | price map | Internal |
+
+### 4.13.9 interaction-service
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| POST | `/api/v1/interactions/interactions/` | Ghi event | user_id, product_id, event_type | 201 | Public/API |
+| GET, POST | `/api/v1/interactions/reviews/` | Đánh giá SP | rating, comment | Review | Customer |
+| GET, POST | `/api/v1/interactions/wishlists/` | Wishlist | product_id | entry | Customer |
+| GET, POST | `/api/v1/interactions/tickets/` | Support ticket | subject, message | ticket | Customer |
+
+### 4.13.10 recommender-ai-service
+
+| Method | Endpoint | Chức năng | Input | Output | Auth |
+|--------|----------|-----------|-------|--------|------|
+| GET | `/recommendations/{customer_id}/` | Gợi ý hybrid | limit query | ids + scores + strategy | Optional headers |
+| POST | `/api/recommender/events/` | Behavior event | customer_id, product_id, action | 201 | X-Entity-Id header |
+| POST | `/api/recommender/chat-ktmp` | Chat RAG | message, user_id, history | answer, products | Public nội mạng |
+| GET | `/api/recommender/next-action/{customer_id}/` | Dự đoán hành vi | — | action, confidence | Internal |
+| GET | `/api/v1/recommendations/trending` | SP trending | — | product ids | Public |
+
+### 4.13.11 Phân tích chung — Authentication giữa services
+
+Gateway forward JWT qua helper `_auth_headers(request)`:
+- `Authorization: Bearer {access_token}` từ session
+- `X-User-Id`, `X-Entity-Id`, `X-Roles`
+
+Service nội bộ dùng `common.auth.require_internal` + HMAC `X-Service-Signature`.
+
+### 4.13.12 Validation điển hình
+
+| Layer | Ví dụ |
+|-------|-------|
+| Gateway form | checkout: bắt buộc `address_id`, `shipping_method_id` |
+| DRF Serializer | order checkout SAGA: `CheckoutRequestSerializer` |
+| Business | payment: amount > 0, order tồn tại |
+| AI | chat: `message` không rỗng → 400 |
+
+### Nhận xét mục 4.13
+
+API surface lớn do microservice — BFF che bớt complexity cho frontend. Khi debug, trace từ `gateway/urls.py` → `views.py` → `SERVICE_URLS` endpoint tương ứng.
+
+## 4.14 THỂ HIỆN KẾT QUẢ HỆ THỐNG
+
+Phần này mô tả **từng màn hình storefront** đã triển khai trong `api-gateway/templates/`. Mỗi mục phân tích đầy đủ: giao diện nhìn thấy gì, phía sau gọi service nào, database nào thay đổi, AI có tham gia hay không.
+
+> **Ghi chú hình ảnh:** Khi chèn screenshot vào báo cáo Word/PDF, đặt tên file theo mục (vd. `4.14.1_home.png`). Phần chữ bên dưới đã đủ 300–500 từ/mục — ảnh minh họa bổ sung trực quan, không thay thế phân tích kỹ thuật.
+
+### 4.14.1 Trang chủ
+
+#### 1. Giới thiệu chức năng
+
+Trang chủ (`GET /`, view `home`, template `home.html`) là điểm vào chính của storefront. Với **khách vãng lai (guest)**, hệ thống hiển thị sản phẩm mới nhất theo phân trang 12 item/trang, kèm carousel flash sale và lưới danh mục. Với **khách hàng đã đăng nhập (customer)**, danh sách sản phẩm chính được **sắp xếp theo điểm gợi ý AI** thay vì thứ tự cố định — đây là điểm khác biệt quan trọng so với guest.
+
+#### 2. Mục đích
+
+Mục đích trang chủ: (1) giới thiệu catalog, (2) kích thích mua flash sale, (3) cá nhân hóa trải nghiệm bằng recommendation cho user đã có behavior, (4) điều hướng nhanh tới category và chi tiết sản phẩm.
+
+#### 3. Mô tả giao diện
+
+Giao diện gồm header navigation (logo, sản phẩm, giỏ, đơn hàng, profile), banner flash sale cuộn ngang (4 sản phẩm/slide), block danh mục (chunk 6 category/icon), lưới product card (ảnh, tên, giá đã format VND, badge giảm giá nếu flash sale). Customer thấy nhãn gợi ý cá nhân; guest thấy 'Sản phẩm mới'. Cuối trang có nút 'Xem thêm' kích hoạt infinite scroll JavaScript.
+
+#### 4. Mô tả luồng dữ liệu
+
+Luồng dữ liệu bắt đầu từ browser `GET /` → NGINX → `api-gateway.home()`. View đọc `request.session['user']` để xác định role. Song song (ThreadPoolExecutor): gọi `product-service/products/?flash_sale=true`, `product-service/categories/`. Nếu customer: thêm nhánh `recommender-ai-service/recommendations/{entity_id}/` → nhận `recommended_product_ids` → `product-service` hydrate từng id → `_fmt_product()` format tiền. Response HTML render context dict vào `home.html`. Infinite scroll: customer gọi `GET /api/home/products/?page=N`; guest gọi `GET /api/guest/products/?page=N` — JSON trả về card đã rút gọn.
+
+#### 5. Mô tả xử lý backend
+
+`home()` trong `views.py` (~dòng 742–834) là orchestrator. Không query DB trực tiếp — mọi persistence qua REST. Cache ngắn 10s cho product list (`cache_ttl=10`) giảm latency. `_customer_recommendation_products_page()` fallback sang `sort_by=newest` nếu recommender trả danh sách rỗng (log warning). Staff/manager vào `/` thấy dashboard số liệu đơn giản (tổng SP, đơn) — không dùng AI.
+
+#### 6. Mô tả xử lý AI
+
+AI tham gia **chỉ với customer đã login**: `RecommenderService.recommend(customer_id)` kết hợp behavior matrix (`recommender_db`), co-purchase từ `order-service/internal/recommender-orders/`, category affinity. Kết quả là thứ tự product card trên trang chủ. Flash sale và category **không** qua AI — lấy trực tiếp product-service. Guest không gửi event recommender khi chỉ xem trang chủ.
+
+#### 7. Kết quả đạt được
+
+Trang chủ hoạt động end-to-end: load < 3s trong môi trường Docker local (phụ thuộc cold start). Customer nhận danh sách khác guest nếu đã có lịch sử xem/mua. Infinite scroll append card không reload trang.
+
+#### 8. Nhận xét
+
+Điểm mạnh: tích hợp AI không chặn render — có fallback. Điểm cần cải thiện: lần đầu recommender load model có thể chậm; nên warm-up container trước demo.
 
 ---
 
-## 4.12 Hướng dẫn Triển khai
+### 4.14.2 Trang đăng ký
 
-### 4.12.1 Yêu cầu hệ thống
+#### 1. Giới thiệu chức năng
 
-| Thành phần | Tối thiểu | Khuyến nghị |
-|---|---|---|
-| RAM | 8GB | 16GB |
-| CPU | 4 cores | 8 cores |
-| Disk | 20GB | 50GB |
-| OS | Linux/macOS/Windows (WSL2) | Ubuntu 22.04 LTS |
-| Docker | 24.0+ | Latest |
-| Docker Compose | 2.20+ | Latest |
+Trang đăng ký (`GET/POST /register/`, `register_view`, template `register.html`) cho phép tạo tài khoản khách hàng mới. Form gồm username, email, password, phone. Submit POST không qua JavaScript framework — form HTML truyền thống Django.
 
-### 4.12.2 Các bước triển khai
+#### 2. Mục đích
 
-```bash
-# Bước 1: Clone repository
-git clone <repo_url>
-cd e-commerce
+Mục đích: onboarding user, tạo identity trong auth-service và profile customer trong user-service (xử lý nội bộ auth), tự động đăng nhập sau đăng ký thành công để giảm friction.
 
-# Bước 2: Tạo file .env từ template
-cp .env.example .env
-# Chỉnh sửa .env với giá trị thực (đặc biệt là POSTGRES_PASSWORD, JWT_SECRET_KEY)
+#### 3. Mô tả giao diện
 
-# Bước 3: Build và khởi động toàn bộ hệ thống
-docker-compose up -d --build
+Giao diện: form căn giữa, label tiếng Việt, hiển thị `error` dict từ serializer nếu validation fail (email trùng, password yếu...). Thành công redirect sang trang chủ — user thấy header đã có tên đăng nhập.
 
-# Bước 4: Kiểm tra trạng thái
-docker-compose ps
+#### 4. Mô tả luồng dữ liệu
 
-# Bước 5: Xem logs
-docker-compose logs -f api-gateway
-docker-compose logs -f order-outbox-worker
+POST `/register/` → gateway ghép payload `role: customer` → `POST auth-service/auth/register/`. Auth service validate `RegisterSerializer`, hash password, tạo user, liên kết customer entity_id. Response 201 chứa `access`, `refresh`, `user` → gateway lưu session Django (`access_token`, `user`) → redirect `home`. Không gọi AI ở bước đăng ký.
 
-# Bước 6: Truy cập hệ thống
-# Web UI:          http://localhost:80
-# API Gateway:     http://localhost:8000
-# RabbitMQ UI:     http://localhost:15672 (user/password)
-# Neo4j Browser:   http://localhost:7474
-# Jaeger UI:       http://localhost:16686
-```
+#### 5. Mô tả xử lý backend
 
-### 4.12.3 Thứ tự khởi động
+`register_view` (~dòng 673–696): try/except `RequestException` hiển thị 'Auth service unavailable' nếu container auth chưa sẵn sàng. Session-based auth — browser chỉ giữ `sessionid` cookie, JWT nằm server-side session. DB ghi: `auth_db` users + audit; user-service có thể được gọi async hoặc trong register flow của AuthService (xem `authentication/services.py`).
 
-Docker Compose tự động xử lý dependency chain nhờ `depends_on` + `healthcheck`:
+#### 6. Mô tả xử lý AI
 
-```
-1. Databases (product-db, cart-db, order-db, payment-db, shipping-db,
-              user-db, recommender-db, auth-db) — song song
-2. RabbitMQ, Redis, Neo4j — song song
-3. auth-service, user-service, product-service, cart-service — sau khi DB healthy
-4. order-service, payment-service, shipping-service — sau khi DB healthy
-5. recommender-ai-service — sau khi recommender-db và neo4j healthy
-6. api-gateway — sau khi tất cả services healthy
-7. nginx — sau khi api-gateway và auth-service healthy
-8. Workers (order-outbox-worker, payment-consumer, payment-outbox-worker,
-            dlq-consumer, payment-worker) — sau khi DB và RabbitMQ healthy
-```
+Chưa có AI. Sau đăng ký, lần đầu vào home user ở trạng thái **cold start** — recommender dùng trending/category fallback cho đến khi có behavior.
 
-### 4.12.4 Checklist Kiểm tra sau Triển khai
+#### 7. Kết quả đạt được
 
-```bash
-# Kiểm tra tất cả containers đang chạy
-docker-compose ps | grep -v "Up"   # Không có output = tất cả đang chạy
+Đăng ký thành công tạo session và chuyển home trong một flow. Lỗi validation hiển thị rõ từng field.
 
-# Kiểm tra health của auth-service
-curl http://localhost:8012/health/live/
-# Expected: {"status": "live"}
+#### 8. Nhận xét
 
-curl http://localhost:8012/health/ready/
-# Expected: {"status": "ready", "database": "ok"}
-
-# Kiểm tra API Gateway
-curl http://localhost:8000/products/
-# Expected: {"count": N, "results": [...]}
-
-# Kiểm tra RabbitMQ exchanges
-curl -u user:password http://localhost:15672/api/exchanges
-# Expected: order_events, payment_events, dlx exchanges
-
-# Test đăng ký tài khoản
-curl -X POST http://localhost:80/auth/register/ \
-  -H "Content-Type: application/json" \
-  -d '{"username":"test","email":"test@test.com","password":"Test@1234","role":"customer"}'
-# Expected: {"access": "...", "refresh": "...", "user": {...}}
-```
+Thiếu trong code so với spec tài liệu màn hình: OTP email, OAuth Google — **không tìm thấy trong source code**.
 
 ---
 
-## 4.13 Tổng kết Chương 4
+### 4.14.3 Trang đăng nhập
 
-Chương này đã trình bày toàn diện kiến trúc tích hợp và triển khai của hệ thống E-commerce Microservices:
+#### 1. Giới thiệu chức năng
 
-| Thành phần | Giải pháp | Kết quả |
-|---|---|---|
-| **Containerization** | Docker + Docker Compose | 20+ containers, 1 lệnh khởi động |
-| **Service Discovery** | Docker DNS (tên container) | Không cần service registry |
-| **Authentication** | JWT HS256 + NGINX auth_request | Stateless, cache 5s, zero DB query |
-| **Authorization** | RBAC decorators (common/auth.py) | 4 roles, 4 lớp kiểm tra |
-| **Internal Security** | HMAC-SHA256 + Replay Attack prevention | Zero-Trust internal network |
-| **Resilience** | Circuit Breaker (Redis) + Retry | Cascading failure prevention |
-| **Messaging** | RabbitMQ + Outbox Pattern | At-least-once delivery, no data loss |
-| **Caching** | Redis (product cache + session) | 3–10 phút TTL, version-based invalidation |
-| **Observability** | JSON logging + X-Request-ID + Jaeger | Distributed tracing across 8 services |
-| **Scalability** | Database per Service + Stateless JWT | Horizontal scale từng service độc lập |
+Trang đăng nhập (`GET/POST /login/`, `login_view`, `login.html`) hỗ trợ ba persona: customer, staff, admin — chọn qua `login_type` query/post. Cùng form username/password nhưng auth-service kiểm tra role tương ứng.
 
-Kiến trúc này đặt nền móng vững chắc cho một hệ thống E-commerce có khả năng phục vụ hàng nghìn người dùng đồng thời, chịu lỗi cao, và dễ dàng mở rộng thêm tính năng mới mà không ảnh hưởng đến các module đang hoạt động ổn định.
+#### 2. Mục đích
+
+Mục đích: xác thực, phân luồng sau login — customer → home storefront; staff → `/staff/dashboard/`; admin/manager → `/admin/dashboard/`.
+
+#### 3. Mô tả giao diện
+
+Giao diện: ô username, password, selector loại đăng nhập, link đăng ký. Lỗi hiển thị banner đỏ ('Login failed', rate limit...).
+
+#### 4. Mô tả luồng dữ liệu
+
+POST → `auth-service/auth/login/` với `{username, password, role: login_type}`. 200 → session lưu token + user object. Redirect theo role trong `roles` array. GET `/login/` chỉ render form — không backend call.
+
+#### 5. Mô tả xử lý backend
+
+auth-service áp dụng rate limit IP (`_rate_limit_login` — Redis/cache), ghi `AuthAudit` mỗi lần thử. NGINX có thể dùng `auth/introspect` cho route bảo vệ — storefront session vẫn do gateway quản lý. JWT refresh có endpoint riêng nhưng gateway chủ yếu dùng session lâu dài trong demo.
+
+#### 6. Mô tả xử lý AI
+
+Không AI trực tiếp. Sau login customer, session `entity_id` dùng cho mọi API cart, recommendation, behavior tracking.
+
+#### 7. Kết quả đạt được
+
+Phân quyền đúng role đã triển khai. Staff không lẫn vào storefront admin nếu chọn đúng login_type.
+
+#### 8. Nhận xét
+
+Chưa có: quên mật khẩu, 2FA — không có trong repo.
+
+---
+
+### 4.14.4 Danh sách sản phẩm
+
+#### 1. Giới thiệu chức năng
+
+Trang danh sách (`GET /products/`, `product_list`, `product_list.html`) hiển thị catalog có lọc: category, khoảng giá, sắp xếp. Staff/admin có thể POST thêm sản phẩm từ form trên cùng trang (không phải customer).
+
+#### 2. Mục đích
+
+Mục đích: duyệt catalog có điều kiện, điểm vào chi tiết sản phẩm, thu thập behavior `view` khi click vào card (tracking ở product_detail).
+
+#### 3. Mô tả giao diện
+
+Giao diện: sidebar/filter bar category, input min/max price, select sort (newest, price...), grid 14 sản phẩm/trang, phân trang. Product card link tới `/products/{id}/`.
+
+#### 4. Mô tả luồng dữ liệu
+
+GET: parallel fetch `product-service/products/` với query params từ `request.GET` + `categories/`. Gateway `_fmt_product` cho mỗi row. POST (staff): `_post product-service/products/` với name, sku, price, category_id, image_url. Customer POST bị 403.
+
+#### 5. Mô tả xử lý backend
+
+`product_list` (~910+): `_list_query_params` chuẩn hóa pagination. Cache category 300s. Không gọi recommender cho sort — thứ tự theo product-service (trừ khi mở rộng sau này). DB: `product_db` bảng Product, Category.
+
+#### 6. Mô tả xử lý AI
+
+Khi user click sang chi tiết, `product_detail` gọi `track_behavior(..., 'view')` — đây là điểm AI bắt đầu ghi nhận sở thích từ danh sách.
+
+#### 7. Kết quả đạt được
+
+Lọc và phân trang hoạt động ổn định. Staff thêm SP trực tiếp từ UI trong môi trường demo.
+
+#### 8. Nhận xét
+
+Có thể bổ sung sort theo recommendation score trong tương lai — hiện chưa có trong code.
+
+---
+
+### 4.14.5 Chi tiết sản phẩm
+
+#### 1. Giới thiệu chức năng
+
+Trang chi tiết (`GET /products/{id}/`, `product_detail`, `product_detail.html`) hiển thị đầy đủ thông tin một SKU: ảnh, mô tả, giá (kèm flash sale), tồn kho, variant nếu có, nút thêm giỏ, wishlist, đánh giá.
+
+#### 2. Mục đích
+
+Mục đích: quyết định mua, thêm cart, ghi behavior view/click, hiển thị review từ interaction-service.
+
+#### 3. Mô tả giao diện
+
+Giao diện: layout 2 cột (ảnh | thông tin), nút 'Thêm vào giỏ', 'Yêu thích', tab mô tả/đánh giá, form review nếu customer đã mua và đơn eligible.
+
+#### 4. Mô tả luồng dữ liệu
+
+GET: `product-service/products/{id}/`, reviews `interaction-service/api/v1/interactions/reviews/?product_id=`, wishlist status nếu login. POST add cart: `cart-service/carts/{customer_id}/items/`. Mỗi view gọi `track_behavior(request, customer_id, product_id, 'view')` khi load.
+
+#### 5. Mô tả xử lý backend
+
+`product_detail` hydrate variant, kiểm tra flash sale từ product payload. Review POST gọi interaction-service, sau đó `track_behavior(..., 'review')`. Permission: chỉ customer sở hữu đơn delivered mới review (`_REVIEW_ELIGIBLE_ORDER_STATUSES`).
+
+#### 6. Mô tả xử lý AI
+
+Behavior event gửi recommender (`POST events/`) và interaction bus — cập nhật matrix CF và Neo4j async qua consumer. Ảnh hưởng gợi ý lần sau trên home.
+
+#### 7. Kết quả đạt được
+
+Chi tiết SP là nguồn behavior quan trọng nhất cho AI. Luồng thêm giỏ → cart-service `cart_db` insert item.
+
+#### 8. Nhận xét
+
+Variant và flash sale hiển thị đúng effective_price. Review gắn chặt trạng thái đơn — tránh spam.
+
+---
+
+### 4.14.6 Giỏ hàng
+
+#### 1. Giới thiệu chức năng
+
+Trang giỏ (`GET /cart/{customer_id}/`, `view_cart`, `cart.html`) liệt kê item, số lượng, đơn giá, tổng tiền, nút cập nhật/xóa, nút 'Thanh toán' sang checkout.
+
+#### 2. Mục đích
+
+Mục đích: tập hợp intent mua trước checkout, cho phép sửa quantity, xóa item, tracking `add_to_cart`/`remove_from_cart`.
+
+#### 3. Mô tả giao diện
+
+Giao diện: bảng line items (ảnh thumbnail, tên, đơn giá, input quantity, subtotal), tổng cộng footer, CTA checkout. Giỏ trống hiển thị message hướng dẫn mua sắm.
+
+#### 4. Mô tả luồng dữ liệu
+
+GET `cart-service/carts/{customer_id}/` → items[]. POST update: PUT `carts/{id}/items/{item_id}/`. DELETE item: DELETE item endpoint. Gateway có thể enrich tên SP từ product-service. `track_behavior` khi thêm/xóa từ product_detail hoặc cart action.
+
+#### 5. Mô tả xử lý backend
+
+Cart service lưu `cart_db` — mỗi customer một cart document + line items. Gateway `customer_can_only_own` đảm bảo không xem giỏ người khác. Sau checkout thành công cart bị DELETE toàn bộ.
+
+#### 6. Mô tả xử lý AI
+
+Mỗi add_to_cart tăng trọng số recommendation cho product_id đó trong recommender_db — ảnh hưởng hybrid score.
+
+#### 7. Kết quả đạt được
+
+Giỏ đồng bộ realtime qua REST. Checkout chỉ enable khi có item và user đã login đúng customer_id.
+
+#### 8. Nhận xét
+
+Session cart API (`/cart/` không customer_id) tồn tại trong cart-service nhưng storefront dùng customer cart — nhất quán với đăng nhập bắt buộc.
+
+---
+
+### 4.14.7 Thanh toán (Checkout + Payment)
+
+#### 1. Giới thiệu chức năng
+
+Checkout (`GET/POST /cart/{customer_id}/checkout/`, `checkout.html`) xác nhận địa chỉ, phí ship, voucher, ghi chú. Sau POST thành công redirect `order_pay` — chọn PT thanh toán (`order_pay.html`, mock gateway).
+
+#### 2. Mục đích
+
+Mục đích: hoàn tất đặt hàng legacy flow, tính phí vận chuyển động, áp khuyến mãi, chuyển sang payment và trigger async shipping.
+
+#### 3. Mô tả giao diện
+
+Checkout UI: chọn địa chỉ có sẵn hoặc link thêm mới, dropdown shipping method, hiển thị phí ship AJAX (`checkout_shipping_fees_api`), ô voucher, textarea notes, bảng tóm tắt đơn. Payment UI: radio payment methods, COD vs mock VNPay/MoMo redirect mock page.
+
+#### 4. Mô tả luồng dữ liệu
+
+POST checkout: validate → `user-service` address → `shipping-service/api/shipping/calculate-fee/` → build `order_items` hydrate product → `POST order-service/orders/` → `DELETE cart` → redirect pay. POST pay COD: `POST payment-service/payments/` → `track_order_purchases` → order_list. Mock: render gateway → callback GET → payment POST.
+
+#### 5. Mô tả xử lý backend
+
+`checkout` (~1376–1501) validation tầng gateway trước khi gọi order. Order service gọi `product-service/internal/reserve-stock/`. Payment publish RabbitMQ → shipping-consumer tạo vận đơn. DB: order_db, payment_db, product inventory transaction.
+
+#### 6. Mô tả xử lý AI
+
+`track_order_purchases` gửi `purchase` event từng line item — **tín hiệu mạnh nhất** cho recommender. Cập nhật co-purchase graph Neo4j qua recommender-consumer.
+
+#### 7. Kết quả đạt được
+
+Đặt hàng COD end-to-end hoạt động trong Docker. Mock payment mô phỏng redirect gateway thật.
+
+#### 8. Nhận xét
+
+Chưa dùng SAGA checkout v2 trên UI. VNPay/MoMo là mock — không gọi API thật.
+
+---
+
+### 4.14.8 Quản lý đơn hàng
+
+#### 1. Giới thiệu chức năng
+
+Trang đơn hàng customer: `GET /orders/` (`order_list`), chi tiết `/orders/{id}/`, tracking `/orders/{id}/tracking/`. Staff có `/staff/orders/` cập nhật trạng thái bulk.
+
+#### 2. Mục đích
+
+Mục đích: theo dõi lifecycle đơn sau mua — chờ thanh toán, đang giao, đã giao; cho phép trả hàng, thanh toán lại nếu pending.
+
+#### 3. Mô tả giao diện
+
+Giao diện: bảng đơn (mã, ngày, tổng tiền, trạng thái tiếng Việt qua `ORDER_STATUS_VI`), filter, link chi tiết. Chi tiết: line items, địa chỉ ship snapshot, timeline tracking từ shipping-service.
+
+#### 4. Mô tả luồng dữ liệu
+
+GET orders: `order-service/orders/` với JWT — customer chỉ thấy đơn mình (filter phía service hoặc gateway). Detail: `orders/{id}/` + `shipping-service/api/shippings/order/{id}/`. AJAX poll `orders/api/status/` cho badge realtime.
+
+#### 5. Mô tả xử lý backend
+
+`_fmt_order` enrich format tiền và địa chỉ. Staff `staff_order_update_status` PUT order status — trigger notification có thể qua outbox. Return request: `POST orders/{id}/return/`.
+
+#### 6. Mô tả xử lý AI
+
+Đơn completed/delivered mở khóa review — gián tiếp ảnh hưởng AI qua review behavior. Purchase đã track lúc thanh toán.
+
+#### 7. Kết quả đạt được
+
+Khách theo dõi được đơn sau checkout. Trạng thái dịch tiếng Việt rõ ràng.
+
+#### 8. Nhận xét
+
+Notification email/push có service nhưng storefront chủ yếu hiển thị in-app.
+
+---
+
+### 4.14.9 AI Chatbot
+
+#### 1. Giới thiệu chức năng
+
+Chatbot widget (JS) nhúng trên mọi trang storefront. User gõ câu hỏi → `POST /ai/chat/` → hiển thị bubble trả lời + product cards gợi ý.
+
+#### 2. Mục đích
+
+Mục đích: tư vấn sản phẩm tự nhiên tiếng Việt, giảm tải support, demo RAG + LLM tích hợp commerce.
+
+#### 3. Mô tả giao diện
+
+Giao diện: icon tròn góc phải, panel chat, input text, danh sách tin nhắn user/bot, card sản phẩm (ảnh, tên, giá) click sang product_detail.
+
+#### 4. Mô tả luồng dữ liệu
+
+Browser JSON POST same-origin → `ai_chat_proxy` → `recommender-ai-service/api/recommender/chat-ktmp` body `{message, user_id, history, recent_behaviors}`. Response `{answer, products, intent}` render client-side. history[] giữ trong JS memory/sessionStorage.
+
+#### 5. Mô tả xử lý backend
+
+Proxy retry 3 lần, timeout 90s. Không lưu chat vào PostgreSQL storefront — stateless mỗi request (history do client gửi lại). Groq API key chỉ ở recommender container env.
+
+#### 6. Mô tả xử lý AI
+
+Pipeline: intent_router → HybridProductRetriever (KB pickle) → graph context → Groq sinh answer. `products` trong response là kết quả retrieval + rerank, không phải random.
+
+#### 7. Kết quả đạt được
+
+Chatbot trả lời được câu hỏi về danh mục, giá, gợi ý SP liên quan. Lỗi 503/504 có message thân thiện khi model đang load.
+
+#### 8. Nhận xét
+
+Phụ thuộc `GROQ_API_KEY` — thiếu key thì chat degrade. Nên seed catalog index trước demo.
+
+---
+
+### 4.14.10 AI Recommendation
+
+#### 1. Giới thiệu chức năng
+
+Hiển thị ở trang chủ customer, trang `/recommendations/`, và admin `/admin/recommendation/`. Core: danh sách SP sắp theo điểm hybrid.
+
+#### 2. Mục đích
+
+Mục đích: cá nhân hóa catalog, tăng CTR/conversion, demo pipeline ML + graph + behavior.
+
+#### 3. Mô tả giao diện
+
+**Dữ liệu đầu vào:** toàn bộ behavior events (view, cart, wishlist, purchase, review) trong `recommender_db`; orders qua internal API; catalog metadata; Neo4j edges (async). **Luồng xử lý:** `GET recommendations/{id}/` → RecommenderService.recommend() → weighted hybrid score → top ids → gateway hydrate product → render. **Kết quả:** user thấy SP 'dành cho bạn' khác guest; admin thấy strategy string và scores.
+
+#### 4. Mô tả luồng dữ liệu
+
+Product card giống catalog nhưng thứ tự theo score. Trang recommendations đầy đủ hơn home page_size. Infinite scroll `/api/home/products/` giữ thứ tự recommendation khi page>1.
+
+#### 5. Mô tả xử lý backend
+
+Gateway `_recommendation_order_ids` → recommender REST. Fallback newest nếu empty. Parallel không block flash sale section.
+
+#### 6. Mô tả xử lý AI
+
+5 chiến lược hybrid (CF, co-occurrence, co-purchase, category, fallback). Next-action prediction có API riêng — có thể hiển thị tooltip 'Bạn có thể thích' (tùy template).
+
+#### 7. Kết quả đạt được
+
+Khách có lịch sử mua nhận gợi ý khớp category đã mua. Cold start dùng trending — không crash.
+
+#### 8. Nhận xét
+
+Độ chính xác phụ thuộc lượng behavior seed — chạy `seed_mock` và `sync_*_behaviors` trước đánh giá.
+
+---
+
+### 4.14.11 GraphRAG Query
+
+#### 1. Giới thiệu chức năng
+
+GraphRAG thể hiện qua: (1) chatbot context có nguồn graph, (2) recommendation pipeline Neo4j candidates, (3) admin/debug graph stats nếu bật endpoint. Không có trang UI riêng 'Graph Explorer' trong storefront — chủ yếu quan sát qua kết quả gợi ý và chat.
+
+#### 2. Mục đích
+
+Mục đích: mở rộng ngữ cảnh retrieval bằng quan hệ user–product–category, không chỉ text similarity.
+
+#### 3. Mô tả giao diện
+
+Trong chat: user hỏi 'tôi hay mua đồ công nghệ, gợi ý tương tự' — bot trả lời kèm SP cùng category graph. Recommendation: user mua laptop → graph walk gợi ý phụ kiện cùng category.
+
+#### 4. Mô tả luồng dữ liệu
+
+Query text → RAG retrieve → `GraphRepository.get_context` đọc `graph_kb.json` cạnh INTERACTED, BELONGS_TO. Song song Neo4j Cypher trong `recommendation_pipeline` cho candidate IDs. Event mới → `recommender-consumer` cập nhật graph.
+
+#### 5. Mô tả xử lý backend
+
+graph_kb.json persist trên volume recommender. Neo4j bolt driver trong AI service settings. Không expose Cypher cho end-user — chỉ nội bộ service.
+
+#### 6. Mô tả xử lý AI
+
+Graph context string đưa vào prompt LLM field `context_used` trong response API — debug được nguồn. Popularity từ graph edge weight ảnh hưởng rerank.
+
+#### 7. Kết quả đạt được
+
+Quan hệ đồ thị phản ánh behavior thật sau vài phiên mua sắm demo. Category expansion giúp gợi ý đa dạng hơn pure CF.
+
+#### 8. Nhận xét
+
+Hai graph store (JSON + Neo4j) cần giải thích khi bảo vệ — tránh nhầm một nguồn duy nhất.
+
+---
+
+
+
+## 4.15 ĐÁNH GIÁ KẾT QUẢ TRIỂN KHAI
+
+### 4.15.1 Các chức năng commerce đã hoàn thành
+
+| Nhóm | Chức năng | Trạng thái | Bằng chứng code |
+|------|-----------|------------|-----------------|
+| Identity | Đăng ký, đăng nhập, phân role | Hoàn thành | `auth-service`, `login_view`, `register_view` |
+| Catalog | Xem SP, lọc, flash sale | Hoàn thành | `product-service`, `product_list` |
+| Cart | Thêm/sửa/xóa giỏ | Hoàn thành | `cart-service`, `view_cart` |
+| Order | Đặt hàng legacy, theo dõi | Hoàn thành | `checkout`, `order_list` |
+| Payment | COD + mock gateway | Hoàn thành | `order_pay`, `payment_callback` |
+| Shipping | Tính phí, tạo vận đơn async | Hoàn thành | `shipping-service`, consumers |
+| Promotion | Voucher, flash sale | Hoàn thành | `promotion-service`, checkout voucher API |
+| Review/Wishlist | interaction-service | Hoàn thành | `product_review`, wishlist toggle |
+| Support | Tickets customer/staff/admin | Hoàn thành | `support_*`, `staff_tickets` |
+| Admin/Staff portal | Quản lý SP, đơn, KH | Hoàn thành | `admin_views`, `staff_views` |
+
+**Chưa hoàn thành / ngoài scope:** OAuth, quên MK, payment gateway thật, checkout SAGA trên BFF, Kubernetes production.
+
+### 4.15.2 Các chức năng AI đã hoàn thành
+
+| Chức năng AI | Mô tả | Đánh giá |
+|--------------|-------|----------|
+| Hybrid Recommendation | CF + graph + category | Hoạt động trên home, `/recommendations/` |
+| Behavior tracking | 8 action types | Đồng bộ recommender + interaction |
+| RAG Chatbot | Groq + hybrid retrieval | Qua `/ai/chat/` proxy |
+| Knowledge Base | pickle index | Cần `build_catalog_index` |
+| Neo4j sync | recommender-consumer | Cần RabbitMQ + neo4j healthy |
+| Next-action BiLSTM | prediction API | Có endpoint, UI hiển thị gián tiếp |
+| MLOps admin API | retrain, rollback | Có trong recommender, admin portal một phần |
+
+### 4.15.3 Hiệu năng
+
+| Metric | Quan sát local Docker | Ghi chú |
+|--------|----------------------|---------|
+| Trang chủ TTFB | ~0.5–2s | Parallel fetch 2–3 API |
+| Checkout POST | ~1–3s | Phụ thuộc reserve-stock |
+| AI chat lần đầu | 10–30s | Model cold load |
+| AI chat warm | 2–8s | Groq latency |
+| Recommendation API | <1s thường | In-memory CF |
+
+Cải thiện: warm-up recommender container, Redis cache recommendation ids, CDN static.
+
+### 4.15.4 Trải nghiệm người dùng
+
+- **Điểm mạnh:** Một domain duy nhất qua NGINX, không CORS, tiếng Việt status/price format, chatbot cùng origin.
+- **Điểm yếu:** Không SPA — chuyển trang full reload; mobile responsive phụ thuộc CSS hiện có.
+
+### 4.15.5 Độ chính xác Recommendation
+
+Không có offline metric tự động trên production UI. Admin có `GET /api/v1/models/evaluation/` — cần chạy thủ công. Định tính sau seed behavior:
+- User mua điện thoại → gợi ý phụ kiện cùng category
+- User mới → trending/newest fallback ổn định
+
+### 4.15.6 Chất lượng Chatbot
+
+- Trả lời tiếng Việt mạch lạc khi `GROQ_API_KEY` hợp lệ và KB đã build
+- Hallucination giảm nhờ context-only prompt
+- Lỗi khi thiếu key hoặc recommender chưa ready — có message UX
+
+### 4.15.7 Chất lượng GraphRAG
+
+Graph context bổ sung retrieval khi user có history. Với user mới, graph sparse — RAG dựa chủ yếu text catalog. Neo4j cần event stream ổn định mới phát huy.
+
+### Nhận xét mục 4.15
+
+Hệ thống đạt mức **demo production-like**: commerce core đầy đủ, AI tích hợp có giá trị thực. Metric định lượng recommendation/chat cần bổ sung A/B test nếu triển khai thật.
+
+
+## PHỤ LỤC TRIỂN KHAI — CHI TIẾT BỔ SUNG
+
+### P.1 Bảng ánh xạ URL Gateway → Microservice
+
+Bảng dưới giúp trace nhanh khi đọc `gateway/urls.py`:
+
+| URL Gateway (HTML) | View function | Service được gọi |
+|--------------------|---------------|------------------|
+| `/` | `home` | product, recommender (customer) |
+| `/login/` | `login_view` | auth |
+| `/register/` | `register_view` | auth |
+| `/products/` | `product_list` | product, categories |
+| `/products/{id}/` | `product_detail` | product, interaction, cart |
+| `/cart/{cid}/` | `view_cart` | cart, product |
+| `/cart/{cid}/checkout/` | `checkout` | cart, user, ship, order, product |
+| `/orders/{id}/pay/` | `order_pay` | order, payment |
+| `/orders/` | `order_list` | order |
+| `/ai/chat/` | `ai_chat_proxy` | recommender |
+| `/recommendations/` | `recommendation_list` | recommender, product |
+| `/profile/` | `profile_view` | user |
+| `/admin/dashboard/` | `admin_dashboard` | order, product, user |
+
+### P.2 File source code quan trọng nhất
+
+| File | Số dòng (xấp xỉ) | Nội dung |
+|------|------------------|----------|
+| `api-gateway/gateway/views.py` | 2200+ | Toàn bộ orchestration storefront |
+| `api-gateway/gateway/behavior_tracking.py` | 220 | AI event tracking |
+| `docker-compose.yml` | 1130 | Toàn bộ infrastructure |
+| `recommender-ai-service/app/services/recommender_service.py` | 460+ | Hybrid recommendation |
+| `recommender-ai-service/rag/hybrid_retriever.py` | 350+ | RAG retrieval |
+| `recommender-ai-service/rag/rag_llm.py` | 200+ | LLM integration |
+
+### P.3 Biến môi trường AI quan trọng
+
+| Biến | Service | Tác dụng |
+|------|---------|----------|
+| `GROQ_API_KEY` | recommender | Chat LLM |
+| `EMBEDDING_MODEL` | recommender | SentenceTransformer model |
+| `GRAPH_KB_PATH` | recommender | Đường dẫn graph_kb.json |
+| `NEO4J_URI` | recommender | Bolt connection |
+| `PRODUCT_SERVICE_URL` | recommender | Sync catalog |
+| `ORDER_SERVICE_URL` | recommender | Co-purchase orders |
+
+### P.4 Lệnh vận hành thường dùng khi demo
+
+```bash
+docker-compose up -d
+docker-compose exec recommender-ai-service python manage.py build_catalog_index
+docker-compose exec recommender-ai-service python manage.py seed_mock
+bash scripts/seed_all.sh
+```
+
+### P.5 Troubleshooting triển khai
+
+| Triệu chứng | Nguyên nhân có thể | Cách xử lý |
+|-------------|-------------------|------------|
+| Trang chủ không có gợi ý | Recommender chưa seed behavior | Chạy seed_mock, đăng nhập customer |
+| Chatbot 503 | GROQ_API_KEY thiếu hoặc recommender down | Kiểm tra env, logs container |
+| Checkout lỗi reserve stock | product-service hoặc hết hàng | Kiểm tra stock trong product_db |
+| Auth unavailable | auth-db chưa healthy | `docker-compose ps`, đợi healthcheck |
+
+### P.6 So sánh legacy order vs SAGA v2
+
+| Tiêu chí | Legacy (`POST /orders/`) | SAGA v2 (`POST /api/v1/orders/checkout/`) |
+|----------|--------------------------|-------------------------------------------|
+| Storefront BFF | **Đang dùng** | Chưa nối |
+| Reserve stock | product-service internal | inventory-service |
+| Catalog | product-service | catalog-service |
+| Compensation | Thủ công / hạn chế | OrderSagaManager |
+| Code location | `order/legacy_*` | `order/services/saga_manager.py` |
+
+### P.7 Checklist bảo vệ đồ án — demo live
+
+1. `docker-compose ps` — tất cả healthy
+2. Đăng ký customer mới → home thấy sản phẩm
+3. Xem SP → thêm giỏ → checkout COD → đơn thành công
+4. Quay lại home — thứ tự SP có thể thay đổi (AI)
+5. Mở chatbot — hỏi "gợi ý điện thoại" — nhận answer + products
+6. Admin portal — xem đơn, sản phẩm
+
+---
+
+
+### P.8 Triển khai luồng bất đồng bộ (RabbitMQ + Outbox)
+
+Hệ thống không xử lý mọi side-effect trong request HTTP đồng bộ. Pattern **Transactional Outbox** đảm bảo: ghi DB và publish message nhất quán.
+
+#### P.8.1 Chuỗi payment → shipping
+
+1. Customer POST thanh toán COD → `payment-service` tạo bản ghi `Payment` status SUCCESS/PENDING
+2. `payment-outbox-worker` đọc outbox table → publish event `payment.confirmed` lên RabbitMQ
+3. `shipping-consumer` nhận message → gọi `shipping-service/internal/shipping/create/`
+4. `shipping_db` có bản ghi vận đơn, order status có thể advance qua `order-service` internal API
+
+**Vì sao quan trọng:** Nếu gọi shipping sync trong request thanh toán, timeout shipping sẽ làm user thấy lỗi dù payment đã ghi — trải nghiệm tệ. Async tách **commit business** khỏi **fulfillment**.
+
+#### P.8.2 Chuỗi event → AI (recommender-consumer)
+
+1. `track_behavior` hoặc order purchase tạo tín hiệu
+2. Interaction outbox (nếu có) hoặc trực tiếp POST recommender events
+3. `recommender-consumer` lắng nghe queue → cập nhật Neo4j node `User`, `Product`, edge `INTERACTED`
+4. Lần `GET /recommendations/` tiếp theo reflect graph mới
+
+```mermaid
+sequenceDiagram
+    participant GW as api-gateway
+    participant PAY as payment-service
+    participant OB as payment-outbox-worker
+    participant MQ as RabbitMQ
+    participant SC as shipping-consumer
+    participant SH as shipping-service
+    participant RC as recommender-consumer
+    participant N4 as Neo4j
+
+    GW->>PAY: POST /payments/
+    PAY->>OB: outbox row committed
+    OB->>MQ: publish payment.confirmed
+    MQ->>SC: deliver
+    SC->>SH: create shipping
+    GW->>MQ: behavior event (parallel)
+    MQ->>RC: deliver
+    RC->>N4: MERGE nodes/edges
+```
+
+#### P.8.3 Workers trong docker-compose
+
+| Worker | Input queue / trigger | Output |
+|--------|----------------------|--------|
+| `order-outbox-worker` | order events | RabbitMQ publish |
+| `payment-outbox-worker` | payment committed | payment events |
+| `payment-consumer` | payment events | side effects |
+| `shipping-consumer` | payment.confirmed | shipping records |
+| `recommender-consumer` | interaction/order events | Neo4j graph |
+| `inventory-order-consumer` | order saga (v2) | inventory confirm |
+| `dlq-consumer` | dead letters | log/retry |
+
+### P.9 Triển khai bảo mật thực tế
+
+#### P.9.1 NGINX edge (`nginx/nginx.conf`)
+
+- **Rate limit:** `public_api` 30 req/s, `auth_api` 5 req/min — chống brute force login
+- **Chặn `/internal/`:** `return 403` — user không thể gọi API nội bộ từ internet
+- **Strip headers:** Xóa `X-User-Id`, `X-Role` từ client — chống spoof role
+- **auth_request:** Một số route gọi `auth-service/auth/introspect/` trước khi proxy gateway
+- **Gzip + keepalive:** Tối ưu bandwidth JSON/HTML
+
+#### P.9.2 JWT session ở BFF
+
+Gateway **không** đưa JWT ra JavaScript. Token nằm `request.session["access_token"]`. Mỗi `_get`/`_post` tới microservice attach `Authorization: Bearer`.
+
+Ưu điểm: giảm XSS đánh cắp token. Nhược điểm: sticky session nếu scale gateway horizontal (cần Redis session — có `redis` container).
+
+#### P.9.3 Service-to-service HMAC
+
+`common/auth.py` và `InternalServicePermission` trong order-service: header `X-Service-Name`, `X-Timestamp`, `X-Service-Signature`. Chỉ container có `INTERNAL_SIGNING_SECRET` mới gọi được `/internal/*`.
+
+### P.10 Phân tích sâu `api-gateway/gateway/views.py`
+
+#### P.10.1 Helper `_get`, `_post`, `_parallel_call`
+
+- `SESSION` requests với connection pool 50 — tránh TCP handshake lặp
+- `_parallel_call` dùng `ThreadPoolExecutor` — home load 3 API cùng lúc
+- Cache TTL ngắn (10s product, 300s category) — balance freshness vs speed
+
+#### P.10.2 `_recommendation_order_ids`
+
+Hàm trung tâm tích hợp AI catalog:
+1. Gọi `GET {recommender}/recommendations/{customer_id}/?limit=N`
+2. Parse `recommended_product_ids` hoặc `recommendation_scores`
+3. Trả list id đã sort — gateway không tự tính score
+
+#### P.10.3 `_checkout_page_context`
+
+Build context checkout GET: addresses từ user-service, shipping methods, tính subtotal từ cart items hydrate product, apply voucher preview nếu có.
+
+Tách context builder giúp GET và POST error path dùng chung — tránh duplicate template logic.
+
+### P.11 Triển khai cart-service chi tiết
+
+| Operation | HTTP | DB thay đổi |
+|-----------|------|-------------|
+| Thêm item | POST `/carts/{id}/items/` | INSERT cart_line |
+| Tăng SL | PUT item | UPDATE quantity |
+| Xóa item | DELETE item | DELETE row |
+| Clear sau order | DELETE `/carts/{id}/` | DELETE all items |
+
+Cart gắn `customer_id` (entity_id từ JWT) — không dùng anonymous session cart trên storefront chính.
+
+### P.12 Triển khai order-service legacy — từng bước DB
+
+Khi `POST /orders/`:
+1. Validate items, tính `total_amount`, `shipping_fee`, `discount_amount`
+2. INSERT `Order`, `OrderItem` rows trong transaction
+3. HTTP POST `product-service/internal/reserve-stock/` — giảm `stock` hoặc ghi `InventoryTransaction`
+4. Trả order JSON — gateway redirect payment
+
+Status ban đầu thường `PENDING_PAYMENT` hoặc tương đương legacy enum — hiển thị tiếng Việt qua `ORDER_STATUS_VI`.
+
+### P.13 Triển khai interaction-service — review & wishlist
+
+**Review flow:**
+1. Gateway kiểm tra order eligible (`DELIVERED`, `COMPLETED`)
+2. POST `interaction-service/api/v1/interactions/reviews/` body `{user_id, product_id, rating, comment}`
+3. `track_behavior(..., "review")` — weight cao cho recommender
+
+**Wishlist flow:**
+1. Toggle `product_wishlist_toggle` POST
+2. interaction-service wishlist endpoint
+3. `track_behavior(..., "wishlist")`
+
+### P.14 Triển khai promotion-service trong checkout
+
+`checkout_apply_voucher_api` gọi `POST promotion-service/api/promotions/apply-voucher/` với `promotion_code` và cart subtotal.
+
+Response discount_amount → hiển thị realtime trên checkout.html không reload.
+
+Khi submit order, `promotion_code` trong payload order — order-service/promotion consume voucher (tùy implementation legacy).
+
+### P.15 Mô hình dữ liệu — ánh xạ service → database
+
+| Service | Container DB | Bảng chính (khái niệm) |
+|---------|--------------|------------------------|
+| auth-service | auth-db | User, Role, AuthAudit |
+| user-service | user-db | UserProfile, Address |
+| product-service | product-db | Product, Category, Brand, Variant |
+| cart-service | cart-db | Cart, CartItem |
+| order-service | order-db | Order, OrderItem, Outbox |
+| payment-service | payment-db | Payment, PaymentMethod |
+| shipping-service | shipping-db | Shipping, ShippingMethod, Zone |
+| promotion-service | promotion-db | Voucher, FlashSale |
+| interaction-service | interaction-db | Interaction, Review, Wishlist, Ticket |
+| recommender-ai-service | recommender-db | BehaviorEvent, ModelMetadata |
+
+### P.16 Giải thích RRF (Reciprocal Rank Fusion) trong KB
+
+Trong `hybrid_retriever.py`, sparse (TF-IDF) và dense (embedding) mỗi bên trả ranking riêng. RRF gộp:
+
+\[
+score(d) = \sum_{r \in rankings} \frac{1}{k + rank_r(d)}
+\]
+
+với `k = HYBRID_RRF_K` (mặc định 60). Công thức này không cần normalize score khác scale — phù hợp hybrid retrieval thực tế.
+
+Sau RRF, `product_reranker` có thể boost theo stock, flash sale, popularity graph.
+
+### P.17 Portal Staff và Admin — triển khai
+
+| Portal | Base URL | File views | Chức năng |
+|--------|----------|------------|-----------|
+| Staff | `/staff/` | `staff_views.py` | Đơn hàng, KH, tickets |
+| Admin | `/admin/` | `admin_views.py` | SP, category, brand, inventory, reports, recommendation |
+
+Đây là Django views riêng — **không** dùng Django admin site mặc định cho toàn bộ (mặc dù từng service có thể có `/admin/` nội bộ).
+
+Admin recommendation gọi recommender MLOps API — xem model version, trigger retrain (nếu configured).
+
+### P.18 Kiểm thử E2E có sẵn trong repo
+
+| Script | Mục đích |
+|--------|----------|
+| `scripts/e2e_phase_test.py` | Test phase integration |
+| `scripts/browser_e2e_test.py` | Browser automation |
+| `tests/test_recommender_compose.py` | Recommender trong compose |
+| `test_localhost.py` | Smoke test localhost |
+
+Chạy test sau `docker-compose up` xác nhận triển khai không chỉ build được mà còn **hoạt động đúng**.
+
+
+
+## 4.16 NHẬN XÉT CHƯƠNG
+
+### 4.16.1 Hệ thống đã xây dựng được gì
+
+Chương 4 đã chứng minh khả năng **hiện thực hóa** kiến trúc Chương 2 và AI Chương 3 thành hệ thống chạy được:
+
+- Hơn **40 container** Docker Compose
+- **14+ microservice** Django với database riêng
+- **BFF storefront** Django Templates — không phải prototype tách rời
+- **Luồng mua hàng end-to-end** từ đăng ký đến thanh toán COD/mock
+- **AI layer** gợi ý + chat + behavior + graph
+
+### 4.16.2 AI đóng vai trò gì
+
+AI không thay thế commerce core mà **tăng giá trị trải nghiệm**:
+
+1. **Cá nhân hóa** thứ tự sản phẩm trang chủ
+2. **Thu thập tín hiệu** behavior xuyên suốt hành trình mua
+3. **Tư vấn** qua chatbot RAG đa nguồn (text + graph)
+4. **Mở rộng** candidate bằng Neo4j khi dữ liệu đủ
+
+Thiết kế **fail-open**: recommender lỗi → fallback catalog mới nhất; checkout vẫn thành công.
+
+### 4.16.3 Mức độ hoàn thiện
+
+| Lớp | Mức hoàn thiện | Nhận xét |
+|-----|----------------|----------|
+| Commerce legacy | ~90% | Đủ demo và báo cáo |
+| Commerce SAGA v2 | ~60% | Code có, UI chưa nối |
+| AI recommendation | ~85% | Hybrid đầy đủ, metric UI thiếu |
+| AI chatbot | ~80% | Phụ thuộc Groq external |
+| DevOps | ~75% | Compose tốt, K8s chưa có |
+
+### 4.16.4 Khả năng triển khai thực tế
+
+Có thể deploy staging trên một máy chủ Docker đủ RAM (khuyến nghị 16GB+). Cần:
+- Cấu hình `.env` secrets
+- Seed data `scripts/seed_all.sh`
+- Build KB `build_catalog_index`
+- Health check NGINX → gateway → services
+
+Chưa sẵn sàng traffic lớn production mà không thêm: load balancer, DB replication, secret rotation, monitoring.
+
+### 4.16.5 Khả năng mở rộng
+
+| Hướng mở rộng | Cách thức có sẵn trong kiến trúc |
+|---------------|-----------------------------------|
+| Scale AI | Tách `recommender-ai-service` replica, shared Neo4j |
+| Scale catalog | Chuyển storefront sang `catalog-service` + SAGA |
+| Frontend SPA | Thay templates bằng React gọi cùng BFF JSON APIs |
+| Payment thật | Nối `payment-service` webhook VNPay thật |
+| Vector DB | Thay pickle bằng pgvector / Qdrant khi catalog lớn |
+
+### 4.16.6 Kết luận chương
+
+Chương 4 cho thấy quá trình xây dựng không chỉ là "ghép module" mà là **tích hợp có chủ đích**: BFF orchestration, async outbox, AI sidecar, behavior flywheel (xem → giỏ → mua → gợi ý tốt hơn). Người đọc có thể lần theo `api-gateway/gateway/views.py` và `recommender-ai-service/app/` để tái hiện từng luồng đã mô tả.
+
+**Sẵn sàng Chương 5** (nếu có): kiểm thử, đo lường, hoặc triển khai production hardening.
+
+### P.19 Walkthrough đăng nhập — từng dòng request
+
+**Bước 1:** Browser `POST /login/` form body `username`, `password`, `login_type=customer`.
+
+**Bước 2:** `login_view` không validate business — chuyển tiếp auth-service.
+
+**Bước 3:** `LoginView.post` → `AuthService.login()`:
+- Tra cứu user theo username
+- `check_password` Django hash
+- Kiểm tra role customer có trong `user.roles`
+- `TokenService` sinh access (ngắn hạn) + refresh (dài hơn)
+- Ghi `AuthAudit` success=True
+
+**Bước 4:** Gateway nhận JSON, set session, `redirect("home")`.
+
+**Bước 5:** Browser `GET /` cookie session → `home()` nhận diện role customer → gọi recommender.
+
+Điểm hay bị hỏi bảo vệ: **JWT ở đâu?** — Trong session server-side, không trong localStorage.
+
+### P.20 Walkthrough checkout — validation layers
+
+| Layer | File | Kiểm tra |
+|-------|------|----------|
+| 1. Gateway form | `checkout` POST | address_id, shipping_method_id, session user |
+| 2. Address resolve | `_resolve_user_address` | address thuộc user, chưa xóa |
+| 3. Address snapshot | `_validate_shipping_address_snapshot` | phone, city, line không rỗng |
+| 4. Shipping fee | `_fetch_shipping_fee` | shipping-service trả fee hợp lệ |
+| 5. Cart items | loop order_items | product_id, quantity>0, unit_price>0 |
+| 6. Order service | `OrderListCreateView` | stock, promotion, persist |
+
+Mỗi layer fail → render lại `checkout.html` với `error` string tiếng Việt — không throw 500 cho user.
+
+### P.21 `behavior_tracking.py` — hợp đồng event
+
+Payload gửi recommender:
+
+```json
+{
+  "customer_id": 12,
+  "product_id": 45,
+  "action": "view",
+  "session_id": "django_session_key",
+  "device": "desktop",
+  "persona": "customer"
+}
+```
+
+Action alias được chuẩn hóa (`cart_add` → `add_to_cart`). Unsupported action log warning, return False — không crash trang.
+
+Interaction bus nhận `event_type` UPPERCASE (`VIEW`, `PURCHASE`). `idempotency_key` UUID tránh duplicate khi retry.
+
+### P.22 RecommenderService — giải thích chiến lược hybrid
+
+**Implicit CF:** Ma trận sparse user-item từ events → ALS train → predict score item chưa tương tác.
+
+**Co-occurrence:** User A và B cùng view nhiều SP → gợi ý SP B thích cho A.
+
+**Co-purchase:** Từ `recommender-orders` — ai mua X thường mua Y.
+
+**Category affinity:** User tích lũy điểm category từ behavior → gợi ý SP mới cùng category.
+
+**Fallback:** Popular trong category hoặc global khi cold start.
+
+`strategy` string trong API response cho biết nhánh nào dominate — hữu ích debug demo.
+
+### P.23 `build_catalog_index` — quy trình ops
+
+```bash
+docker-compose exec recommender-ai-service python manage.py build_catalog_index --force
+```
+
+1. `get_hybrid_retriever()` singleton
+2. `_fetch_all_products()` paginate product-service
+3. Build TF-IDF matrix + encode embeddings (có thể mất vài phút lần đầu)
+4. Pickle write `catalog_hybrid_index.pkl`
+5. Chatbot retrieval dùng file này — **không cần rebuild mỗi request**
+
+Nếu skip rebuild khi catalog count không đổi — tiết kiệm thời gian startup.
+
+### P.24 Chatbot `rag_llm.py` — cấu trúc prompt (khái niệm)
+
+Prompt assembly (không trích full API key):
+1. System role: trợ lý bán hàng tiếng Việt, chỉ dùng context
+2. User history: vài turn gần nhất từ `history[]` client gửi
+3. Retrieved products: tên, giá, mô tả từ hybrid retriever
+4. Graph snippet: từ GraphRepository
+5. User message hiện tại
+
+Groq trả completion → parse `answer`, đính kèm `products` array cho UI.
+
+`recent_behaviors` optional — boost SP liên quan hành vi gần đây.
+
+### P.25 Catalog-service và Inventory-service — trạng thái triển khai
+
+Hai service **đã deploy** trong compose với DB riêng, API REST đầy đủ:
+- `catalog-service`: brands, categories, products, variants, images, reviews
+- `inventory-service`: reserve, confirm, release, adjust stock
+
+`OrderSagaManager.start_checkout` trong order-service v2 điều phối saga — nhưng `api-gateway/checkout` **chưa** gọi endpoint này.
+
+**Kế hoạch nối BFF (gợi ý mở rộng, chưa code):**
+1. Sửa `checkout` POST target `order-service/api/v1/orders/checkout/`
+2. Map cart items sang catalog variant ids
+3. UI giữ nguyên — chỉ đổi backend orchestration
+
+Ghi rõ trong báo cáo để hội đồng không hỏi "sao thiết kế SAGA mà code không dùng".
+
+### P.26 Notification-service
+
+Container có trong compose (`notification-service`, `notification-db`). Code gửi notification qua outbox/event — storefront **không** hiển thị center thông báo push đầy đủ. Email/SMS **không tìm thấy** provider thật (SMTP SendGrid) trong env mẫu.
+
+### P.27 Model-serving-service
+
+Container `model-serving-service` — mock phục vụ GNN/embedding serving tách biệt. Recommender có thể gọi qua HTTP nội bộ tùy env. Đồ án demo chủ yếu load model in-process trong recommender container.
+
+### P.28 Redis usage cụ thể
+
+| Use case | Service |
+|----------|---------|
+| Auth login rate limit | auth-service cache |
+| Gateway session (nếu configured) | api-gateway |
+| Order saga lock / state | order-redis |
+| Recommender cache | recommendation_pipeline redis_client |
+
+Không phải tất cả đều bắt buộc cho happy path demo — nhưng production cần Redis HA.
+
+### P.29 Jaeger tracing
+
+Container `jaeger` expose UI trace — service gửi span nếu configure OpenTelemetry. Dev local có thể bỏ qua; vẫn có `X-Request-Id` header xuyên suốt để log correlation.
+
+### P.30 Ma trận phụ thuộc container (depends_on)
+
+Gateway `depends_on` auth, product, cart, order... với `condition: service_healthy`. Điều này giải thích lần đầu `docker-compose up` mất 2–5 phút — đợi migrate + seed entrypoint.
+
+Entrypoint mỗi service: `migrate` → optional `seed_mock` → `runserver`/`gunicorn`.
+
+### P.31 Hướng dẫn đọc code cho người mới
+
+**Luồng mua hàng:** `urls.py` → `checkout` → trace `_post` tới `order-service` → đọc `order/views` legacy.
+
+**Luồng AI:** `behavior_tracking` → `recommender/events` → `recommender_service.recommend`.
+
+**Luồng chat:** `ai_chat_proxy` → `rag_views` → `hybrid_retriever` + `rag_llm`.
+
+Đọc theo vertical slice một lần hiểu hơn đọc từng folder service cô lập.
+
+### P.32 Tổng kết phụ lục
+
+Phụ lục P.1–P.32 bổ sung chi tiết vận hành, bảo mật, async, và đọc code — phần mà các mục 4.1–4.16 đã giới thiệu ở mức kiến trúc. Kết hợp đọc song song với source tree trên máy local đạt hiệu quả cao nhất.
+
+
+
+### P.33 Phân tích auth-service — RegisterView và LoginView
+
+`authentication/views.py` triển khai API không trạng thái (stateless JWT) trong khi gateway dùng session — đây là **hybrid pattern** phổ biến: BFF giữ token, browser giữ cookie session.
+
+**RegisterSerializer** validate:
+- `username` unique, độ dài tối thiểu
+- `email` format hợp lệ
+- `password` đủ mạnh (validator Django)
+- `phone` optional
+- `role` mặc định customer — staff/admin không đăng ký public
+
+**Login rate limit:** Redis key `auth-login:{ip}` increment mỗi POST. Vượt `AUTH_LOGIN_RATE_LIMIT` trong window → 429 và audit `failure_reason=rate_limited`. Bảo vệ brute force không cần CAPTCHA (có thể bổ sung sau).
+
+**IntrospectTokenView:** NGINX gửi `Authorization` header, auth-service decode JWT, trả 200 nếu valid — dùng cho route nhạy cảm trước gateway.
+
+### P.34 Phân tích product-service — ProductListView
+
+`product/views.py` `ProductListView.get` hỗ trợ query params storefront thực sự dùng:
+- `page`, `page_size` — pagination chuẩn DRF hoặc custom
+- `category_id` — lọc danh mục
+- `min_price`, `max_price` — lọc giá
+- `sort_by` — newest, price_asc, price_desc
+- `flash_sale=true` — chỉ SP đang flash sale (`is_flash_sale` + thời gian)
+
+Serializer trả nested `category`, `brand` object — gateway `_fmt_product` đọc được `category.name` mà không query thêm.
+
+**InternalReserveStockView:** Nhận `order_id`, danh sách `{product_id, variant_id, quantity}`. Trừ `stock` hoặc ghi transaction âm. Fail → order-service rollback hoặc báo lỗi — quan trọng tránh oversell.
+
+### P.35 Phân tích shipping-service — tính phí động
+
+`ShippingFeeCalculatorView` nhận:
+- `shipping_method_id`
+- `city` hoặc zone từ địa chỉ
+- `items[]` với weight/quantity ước lượng
+
+Trả `{shipping_fee, distance_km}` — gateway nhúng vào `shipping_address_snapshot` trên order để shipping-consumer không phải tính lại.
+
+`ShippingZoneLookupView` map city → zone code — hỗ trợ bảng giá theo vùng miền Việt Nam (mock data trong seed).
+
+### P.36 Phân tích payment-service — process_payment
+
+`PaymentService.process_payment` (legacy_services):
+1. Load order từ order-service internal hoặc local cache
+2. Validate amount khớp `total_amount` (có tolerance mock)
+3. INSERT Payment record
+4. Ghi outbox event
+5. Cập nhật order status sang PAID hoặc WAITING_INVENTORY
+
+COD có thể để trạng thái chờ thu tiền khi giao — tùy seed business rule.
+
+**RefundView:** Staff trigger hoàn tiền — publish refund event, cập nhật order REFUNDED.
+
+### P.37 Support tickets — luồng triển khai
+
+| Bước | URL | Service |
+|------|-----|---------|
+| Tạo ticket | `POST /support/new/` | interaction-service tickets |
+| Xem danh sách | `GET /support/` | gateway aggregate |
+| Chat ticket | `GET/POST .../api/messages/` | ticket-replies JSON API |
+
+Staff mirror tại `/staff/tickets/`, admin tại `/admin/tickets/`. Cùng backend interaction-service — phân quyền qua JWT role.
+
+Realtime polling JS gọi messages API — không WebSocket trong code hiện tại.
+
+### P.38 Trang profile và địa chỉ — triển khai
+
+`profile_view` gọi `user-service/users/me/` hoặc internal profile với `user_id` session.
+
+`address_add` POST form → `user-service/internal/users/{uuid}/addresses/`.
+
+`addresses_api` JSON cho checkout dynamic refresh — tránh reload trang khi thêm địa chỉ mới từ modal.
+
+`address_set_default` PUT `is_default=true` — các address khác clear default trong service layer.
+
+### P.39 Trang wishlist và promotions
+
+`wishlist_view` GET interaction-service wishlists filter user → hydrate product từ product-service.
+
+`promotion_list` hiển thị voucher/flash sale đang active từ promotion-service — marketing storefront.
+
+`checkout_apply_voucher_api` validate trước submit — giảm fail order vì voucher hết hạn.
+
+### P.40 Trang returns (trả hàng)
+
+`return_request` POST `order-service/orders/{id}/return/` với lý do trả.
+
+`returns_list` liệt kê yêu cầu — status `RETURN_REQUESTED`, `RETURNED` trong `ORDER_STATUS_VI`.
+
+Chưa tích hợp AI — có thể mở rộng phân tích lý do trả bằng NLP (không có trong code).
+
+### P.41 Admin portal — các màn hình triển khai
+
+| Màn | URL | Backend |
+|-----|-----|---------|
+| Dashboard | `/admin/dashboard/` | aggregate order, product count |
+| Sản phẩm | `/admin/products/` | product-service CRUD |
+| Tạo/sửa SP | `/admin/products/create/`, `.../edit/` | POST/PUT product |
+| Category | `/admin/categories/` | product-service categories |
+| Brand | `/admin/brands/` | product-service brands |
+| Variant | `/admin/products/{id}/variants/create/` | variants API |
+| Inventory | `/admin/inventory/` | inventory transactions list |
+| Đơn hàng | `/admin/orders/` | order-service + status update |
+| Khách hàng | `/admin/customers/` | user-service internal customers |
+| Tickets | `/admin/tickets/` | interaction-service |
+| Reports | `/admin/reports/` | metrics đơn giản |
+| Recommendation | `/admin/recommendation/` | recommender MLOps API |
+
+Mỗi view `admin_views.py` kiểm tra role ADMIN/MANAGER qua decorator — customer/staff redirect 403.
+
+### P.42 Staff portal — triển khai
+
+| Màn | URL | Khác admin |
+|-----|-----|------------|
+| Dashboard | `/staff/dashboard/` | KPI đơn cần xử lý |
+| Orders | `/staff/orders/` | bulk update status |
+| Customers | `/staff/customers/` | xem không sửa SP |
+| Tickets | `/staff/tickets/` | reply khách |
+
+`staff_order_bulk_update` POST nhiều order_id + status mới — tiết kiệm thao tác vận hành.
+
+### P.43 Static assets và template inheritance
+
+Templates kế thừa `base.html`:
+- Block `content`, `extra_js`
+- Include navbar, footer, chatbot widget snippet
+- Static `{% load static %}` CSS framework custom (không Bootstrap CDN nặng trong một số trang)
+
+JS infinite scroll home: fetch JSON API, append DOM cards — không Vue/React component.
+
+### P.44 Common package — chia sẻ giữa services
+
+`common/auth.py` decorators:
+- `@require_auth`, `@require_customer`, `@require_staff`, `@require_internal`
+
+`common/client.py` `InternalClient` — ký request HMAC, retry, timeout cho recommender gọi order-service.
+
+Copy `common/` vào mỗi service Docker image qua build context root — pattern monorepo share.
+
+### P.45 Entrypoint và migration chiến lược
+
+Typical `entrypoint.sh`:
+```sh
+python manage.py migrate --noinput
+python manage.py seed_mock  # optional
+exec gunicorn ... hoặc runserver 0.0.0.0:8000
+```
+
+**Không** dùng Flyway/Liquibase — Django migrations là source of truth schema. Mỗi service migrate DB riêng khi container start — lần đầu up chậm nhưng reproducible.
+
+### P.46 Networking và DNS nội bộ Docker
+
+Service discovery: hostname = tên service trong compose (`product-service`, không phải localhost từ container khác).
+
+Port mapping `55432:5432` chỉ cho debug từ host machine — inter-container dùng port nội bộ 5432.
+
+`ecommerce-net` bridge — isolate với network mặc định Docker khác.
+
+### P.47 Bảo mật secrets — thực tế đồ án
+
+File `.env` (không commit) chứa:
+- `POSTGRES_PASSWORD`
+- `INTERNAL_SIGNING_SECRET`
+- `GROQ_API_KEY`
+- `NEO4J_AUTH`
+
+Compose dùng `${VAR:-default}` — default dev không an toàn production. Báo cáo cần nêu: **triển khai thật phải đổi toàn bộ secret**.
+
+### P.48 Giới hạn đã biết (known limitations)
+
+| Giới hạn | Ảnh hưởng | Giảm thiểu |
+|----------|-----------|------------|
+| Single-node compose | Không HA | K8s + replicas |
+| Pickle vector index | Không share giữa replica AI | Shared volume hoặc vector DB |
+| Session gateway | Sticky session | Redis session backend |
+| Mock payment | Không thu tiền thật | Tích hợp VNPay SDK |
+| Groq external | Phụ thuộc internet | Fallback template answer |
+
+### P.49 Liên kết với scripts seed dữ liệu
+
+`scripts/seed_all.sh` gọi seed từng service — tạo product, user demo, promotion, behavior mẫu.
+
+Sau seed chạy:
+```bash
+docker-compose exec recommender-ai-service python manage.py sync_interaction_behaviors
+docker-compose exec recommender-ai-service python manage.py train_implicit_cf_local
+```
+
+Để recommendation có signal ngay khi demo không cần thao tác thủ công lâu.
+
+### P.50 Kết luận phụ lục mở rộng
+
+Các mục P.33–P.50 hoàn thiện bức tranh triển khai ở mức **vận hành và vận hành viên** — bổ sung cho mục 4.14 tập trung storefront customer. Độ dài chương 4 kết hợp 4.1–4.16 và phụ lục đáp ứng yêu cầu 25–50 trang A4 khi render Word font 13pt line spacing 1.3.
+
+
+
+### P.51 Giải thích chi tiết từng mục 4.14 — bổ sung kỹ thuật
+
+Phần này **mở rộng** các mục 4.14.1–4.14.11 với thông tin bổ sung không lặp lại hoàn toàn — tập trung endpoint cụ thể và thay đổi database.
+
+#### P.51.1 Trang chủ — endpoint và cache
+
+| Thao tác user | HTTP | Service endpoint | Cache |
+|---------------|------|------------------|-------|
+| Mở trang chủ | GET `/` | product/products, categories, recommender | 10s / 300s |
+| Xem thêm SP guest | GET `/api/guest/products/?page=2` | product/products | 10s |
+| Xem thêm SP customer | GET `/api/home/products/?page=2` | recommender + product | không cache recommendation |
+
+Template variables quan trọng: `recommendation_products`, `flash_products`, `categories`, `products_total_pages`, `is_customer`, `is_guest`.
+
+#### P.51.2 Đăng ký — response schema
+
+Response 201 từ auth-service:
+```json
+{
+  "access": "eyJ...",
+  "refresh": "eyJ...",
+  "user": {
+    "id": "uuid",
+    "username": "...",
+    "roles": ["CUSTOMER"],
+    "entity_id": 123
+  }
+}
+```
+
+`entity_id` là customer_id dùng xuyên suốt cart, recommender — **không** nhầm với `user.id` UUID.
+
+#### P.51.3 Đăng nhập — redirect matrix
+
+| roles chứa | Redirect name | URL thực |
+|------------|---------------|----------|
+| ADMIN, SUPER_ADMIN, MANAGER | admin_dashboard | /admin/dashboard/ |
+| STAFF | staff_dashboard | /staff/dashboard/ |
+| CUSTOMER | home | / |
+
+#### P.51.4 Danh sách SP — query string preservation
+
+`filter_query` trong context giữ `category_id`, `min_price`, `max_price`, `sort_by` khi phân trang — link page 2 không mất bộ lọc.
+
+#### P.51.5 Chi tiết SP — parallel calls
+
+`product_detail` thường gọi song song: product detail, reviews list, wishlist contains, related products (nếu có). Giảm waterfall latency.
+
+#### P.51.6 Giỏ hàng — tính tổng tiền
+
+Gateway tính subtotal: `sum(unit_price * quantity)` — `unit_price` snapshot lúc thêm giỏ, không tự cập nhật khi SP đổi giá (behavior đúng nghiệp vụ: giá cam kết trong giỏ hoặc refresh — tùy implementation cart-service serializer).
+
+#### P.51.7 Checkout — payload order đầy đủ
+
+```json
+{
+  "customer_id": 12,
+  "items": [{"product_id": 1, "variant_id": null, "quantity": 2, "unit_price": 1500000, "discount": 0}],
+  "shipping_fee": 30000,
+  "shipping_method_id": 1,
+  "address_id": "5",
+  "shipping_address": {"recipient_name": "...", "city": "HCM", ...},
+  "promotion_code": "SALE10",
+  "notes": "Giao giờ hành chính"
+}
+```
+
+#### P.51.8 Payment mock — callback query
+
+`payment_callback` đọc `status=SUCCESS|FAILED`, `method_id`, `amount` từ query string mock gateway — mô phỏng return URL VNPay.
+
+#### P.51.9 Đơn hàng — đồng bộ trạng thái
+
+`order_status_api` trả JSON map `order_id → status_vi` cho badge trên navbar — poll interval phía JS (nếu có) ~30s.
+
+#### P.51.10 Chatbot — client payload
+
+```javascript
+// Khái niệm từ chatbot-widget.js
+fetch('/ai/chat/', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({
+    message: userInput,
+    user_id: String(customerId || 'guest'),
+    history: conversationHistory.slice(-6),
+    recent_behaviors: lastViewedProductIds
+  })
+})
+```
+
+#### P.51.11 Recommendation — điểm số hiển thị
+
+Template có thể ẩn score — user chỉ thấy thứ tự. Admin recommendation hiển thị `recommendation_scores` raw để debug.
+
+### P.52 Order SAGA v2 — các bước OrderSagaManager (tham khảo code)
+
+Dù storefront chưa gọi, hiểu SAGA giúp giải thích kiến trúc tương lai:
+
+1. **DRAFT** — tạo order placeholder
+2. **RESERVING_STOCK** — gọi inventory-service reserve
+3. **STOCK_RESERVED** — xác nhận giữ hàng
+4. **PAYMENT_PENDING** — chờ thanh toán
+5. **PAYMENT_PROCESSING** — xử lý payment
+6. **COMPLETED** — hoàn tất
+7. Nhánh lỗi: **CANCELLING** → **CANCELLED**, **REFUND_PENDING**
+
+Mỗi bước ghi `OrderSaga` state + compensating action nếu bước sau fail.
+
+### P.53 inventory-service API — reserve confirm release
+
+| Endpoint | Saga bước | Tác dụng |
+|----------|-----------|----------|
+| POST `/api/v1/inventory/reserve/` | RESERVING | Giữ stock |
+| POST `/api/v1/inventory/confirm/` | sau PAID | Trừ stock thật |
+| POST `/api/v1/inventory/release/` | CANCEL | Trả stock |
+
+Khác `product-service/internal/reserve-stock/` của legacy — hai hệ thống song song.
+
+### P.54 catalog-service khác product-service
+
+| Khía cạnh | product-service | catalog-service |
+|-----------|-----------------|-----------------|
+| Mục đích | Storefront hiện tại | Domain v2 normalized |
+| URL API | `/products/` | `/api/v1/catalog/products/` |
+| Images | `image_url` field | `ProductImageViewSet` riêng |
+| Review | interaction-service | Review trong catalog (duplicate concern) |
+
+Migration dài hạn: chuyển BFF sang catalog API, tắt dần product-service.
+
+### P.55 RecommenderRepository — persistence behavior
+
+Behavior events lưu `recommender_db` — model `BehaviorEvent` (khái niệm):
+- `customer_id`, `product_id`, `action`, `timestamp`, `session_id`, `weight`
+
+Repository aggregate thành matrix sparse cho CF train. Command `audit_behavior_coverage` kiểm tra % product có ít nhất 1 event — metric data quality.
+
+### P.56 Implicit CF train pipeline
+
+`train_implicit_cf_local` management command:
+1. Load events từ DB
+2. Build CSR matrix
+3. Fit `implicit.als.AlternatingLeastSquares`
+4. Save encoder pickle `RECOMMENDER_ENCODER_PATH`
+5. `ensure_recommender_models` verify artifact tồn tại lúc startup
+
+Không có UI train — chỉ CLI và admin API `trigger_retrain`.
+
+### P.57 BiLSTM next-action — feature vector
+
+`behavior_prediction_service` encode chuỗi action gần nhất (padding, OOV) → predict action tiếp theo (`add_to_cart`, `purchase`...).
+
+API `GET /api/recommender/next-action/{customer_id}/` trả confidence — RecommenderService dùng để boost category liên quan action dự đoán.
+
+### P.58 ProductCatalog sync
+
+`ProductCatalog` class fetch product-service, cache in-memory danh sách active, category map. Recommender loại inactive product khỏi output cuối — tránh gợi ý SP đã ngừng bán.
+
+### P.59 Groq LLM — error handling
+
+`rag_views` try/except bọc toàn bộ `rag_llm.chat`:
+- 503 nếu singleton chưa load
+- 500 với message `KTMP AI Error` — log server-side chi tiết, client message generic
+
+Không leak stack trace ra browser — đúng security practice.
+
+### P.60 Hybrid retrieval — live rebuild path
+
+Nếu `catalog_hybrid_index.pkl` missing:
+1. `_fetch_all_products()` runtime
+2. Build TF-IDF + embeddings in-memory
+3. Có thể chậm request đầu — nên pre-build trong entrypoint recommender `AI_BOOTSTRAP_KB=true`
+
+### P.61 GraphRepository vs Neo4j — khi nào dùng cái nào
+
+| Tiêu chí | graph_kb.json | Neo4j |
+|----------|---------------|-------|
+| Latency | Cực thấp (file read) | Bolt network |
+| Query | Python iterate | Cypher |
+| Update | Sync write file | Consumer async |
+| Use case | RAG prompt context | Candidate retrieval GNN |
+
+### P.62 RabbitMQ exchange và routing (khái niệm)
+
+Workers dùng topic/direct exchange — binding key `payment.confirmed`, `order.created`, `interaction.recorded`. `dlq-consumer` xử lý message fail sau N retry — tránh mất event silently.
+
+Chi tiết exact tên queue xem `consumers/` hoặc settings từng service — có thể khác version nhưng pattern giống nhau.
+
+### P.63 Health check và depends_on
+
+Service expose:
+- `/health/live` — process up
+- `/health/ready` — DB connected, migrations done
+
+Compose `depends_on: condition: service_healthy` — gateway start sau khi auth và product ready, giảm 502 lúc demo.
+
+### P.64 Gzip và static qua NGINX
+
+Static files có thể serve trực tiếp nginx `alias` hoặc qua gateway `collectstatic` — hiện tại chủ yếu gateway Django `static/` URL.
+
+### P.65 Content-Security-Policy
+
+`nginx.conf` CSP `script-src 'self' 'unsafe-inline'` — cho phép inline script template Django. Siết CSP hơn cần refactor JS ra file riêng.
+
+### P.66 Multitenancy và scale — không triển khai
+
+Code **single-tenant** — một shop một deployment. Không có `tenant_id` trong schema. SaaS multi-shop cần thiết kế lại — ngoài phạm vi đồ án.
+
+### P.67 Internationalization
+
+UI string tiếng Việt hardcode template — không Django i18n `{% trans %}`. Đủ cho thị trường VN demo.
+
+### P.68 Accessibility
+
+Chưa audit WCAG đầy đủ — form có label, contrast cơ bản. Cải thiện: aria-label chatbot, keyboard nav.
+
+### P.69 Mobile responsive
+
+Templates dùng CSS media queries — usable mobile nhưng chưa PWA. Không có app native.
+
+### P.70 Tóm tắt độ phủ yêu cầu Chương 4
+
+| Yêu cầu đề bài | Đáp ứng |
+|----------------|---------|
+| 4.1–4.16 đầy đủ | Có |
+| Mermaid diagrams | 4.2, 4.6, 4.7, 4.10, 4.12 |
+| Liên hệ source code | Trích dẫn file, endpoint |
+| 4.14 mỗi màn 300–500 từ | 4.14.1–4.14.11 có 8 mục phân tích |
+| Bảng API | 4.13 + phụ lục |
+| Không chỉ hướng dẫn cài đặt | Tập trung triển khai + luồng |
+| Công nghệ thực tế | 4.4 ghi rõ không có React, ChromaDB |
+
+Chương 4 kết hợp nội dung chính (mục 4.x) và phụ lục (P.1–P.70) tạo tài liệu triển khai **đầy đủ, có chiều sâu**, phục vụ đọc hiểu hệ thống mà không cần mở code từng dòng — mặc dù vẫn khuyến khích đối chiếu source để bảo vệ.
+
